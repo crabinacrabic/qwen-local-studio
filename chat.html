@@ -1,0 +1,1053 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Qwen AI Studio (Локально)</title>
+    <style>
+        :root {
+            --bg-color: #0d1117;
+            --header-bg: #161b22;
+            --panel-bg: #161b22;
+            --chat-bg: #0f141c;
+            --user-msg-bg: #1f293d;
+            --bot-msg-bg: #181d28;
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
+            --accent-color: #3b82f6;
+            --accent-hover: #2563eb;
+            --border-color: #30363d;
+            --code-bg: #05070a;
+            --think-bg: rgba(59, 130, 246, 0.08);
+            --think-border: rgba(59, 130, 246, 0.25);
+            --think-text: #93c5fd;
+            --success-color: #238636;
+            --danger-color: #da3633;
+            --toast-bg: #1f242c;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+            font-size: 16px;
+        }
+
+        .main-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            max-width: 980px;
+            margin: 0 auto;
+            position: relative;
+        }
+
+        header {
+            padding: 12px 20px;
+            background: var(--header-bg);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            z-index: 10;
+        }
+
+        .header-title {
+            font-size: 1.15rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: #2ea043;
+            box-shadow: 0 0 8px #2ea043;
+        }
+
+        .header-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .model-select {
+            background: var(--chat-bg);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            padding: 8px 14px;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            outline: none;
+            cursor: pointer;
+            font-weight: 500;
+            min-width: 240px;
+        }
+
+        .model-select:focus {
+            border-color: var(--accent-color);
+        }
+
+        .btn-manage {
+            background: rgba(59, 130, 246, 0.15);
+            color: #60a5fa;
+            border: 1px solid rgba(59, 130, 246, 0.4);
+            padding: 8px 14px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s;
+        }
+
+        .btn-manage:hover {
+            background: rgba(59, 130, 246, 0.25);
+        }
+
+        /* Выдвижная панель */
+        .manage-panel {
+            background: var(--panel-bg);
+            border-bottom: 1px solid var(--border-color);
+            padding: 18px 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            max-height: 480px;
+            overflow-y: auto;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            animation: slideDown 0.25s ease;
+        }
+
+        @keyframes slideDown {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .panel-section-title {
+            font-size: 0.88rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-secondary);
+            font-weight: 700;
+            margin-bottom: 6px;
+        }
+
+        .download-row {
+            display: flex;
+            gap: 10px;
+        }
+
+        .download-input {
+            flex: 1;
+            background: var(--chat-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            outline: none;
+        }
+
+        .download-input:focus {
+            border-color: var(--accent-color);
+        }
+
+        .btn-download {
+            background: var(--success-color);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        .btn-download:hover {
+            opacity: 0.9;
+        }
+
+        .btn-download:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .quick-tags {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .tag-pill {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color);
+            color: #93c5fd;
+            padding: 5px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+            user-select: none;
+        }
+
+        .tag-pill:hover {
+            background: rgba(59, 130, 246, 0.2);
+            border-color: #3b82f6;
+            transform: translateY(-1px);
+        }
+
+        /* Список установленных моделей */
+        .installed-models-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 10px;
+        }
+
+        .model-card {
+            background: var(--chat-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 10px 14px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            transition: border-color 0.2s;
+        }
+
+        .model-card.active {
+            border-color: var(--accent-color);
+            background: rgba(59, 130, 246, 0.12);
+        }
+
+        .model-card-info {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            overflow: hidden;
+        }
+
+        .model-card-name {
+            font-weight: 600;
+            font-size: 0.95rem;
+            color: var(--text-primary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .model-card-size {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        .model-card-actions {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+
+        .btn-select-model {
+            background: rgba(59, 130, 246, 0.2);
+            color: #60a5fa;
+            border: 1px solid rgba(59, 130, 246, 0.4);
+            padding: 5px 10px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .btn-select-model:hover {
+            background: var(--accent-color);
+            color: white;
+        }
+
+        .btn-delete-model {
+            background: rgba(218, 54, 51, 0.15);
+            color: #f87171;
+            border: 1px solid rgba(218, 54, 51, 0.4);
+            padding: 5px 10px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-delete-model:hover {
+            background: var(--danger-color);
+            color: white;
+        }
+
+        /* Прогресс-бар */
+        .progress-box {
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .progress-header {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.88rem;
+            font-weight: 600;
+        }
+
+        .progress-bar-bg {
+            height: 12px;
+            background: #21262d;
+            border-radius: 6px;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #3b82f6, #2ea043);
+            border-radius: 6px;
+            transition: width 0.3s ease;
+        }
+
+        /* Toast уведомление */
+        .toast-notify {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: var(--toast-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            font-weight: 500;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+            display: none;
+            z-index: 100;
+            animation: fadeIn 0.2s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Чат */
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 24px 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        .message {
+            display: flex;
+            flex-direction: column;
+            max-width: 90%;
+            line-height: 1.6;
+        }
+
+        .message.user {
+            align-self: flex-end;
+        }
+
+        .message.assistant {
+            align-self: flex-start;
+            width: 90%;
+        }
+
+        .message-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.82rem;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+            font-weight: 600;
+        }
+
+        .message.user .message-header {
+            justify-content: flex-end;
+        }
+
+        .model-badge {
+            background: rgba(59, 130, 246, 0.2);
+            color: #60a5fa;
+            padding: 2px 8px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-family: monospace;
+        }
+
+        .message-bubble {
+            padding: 16px 20px;
+            border-radius: 14px;
+            font-size: 1.05rem;
+            word-break: break-word;
+            white-space: pre-wrap;
+        }
+
+        .message.user .message-bubble {
+            background-color: var(--user-msg-bg);
+            border-bottom-right-radius: 2px;
+        }
+
+        .message.assistant .message-bubble {
+            background-color: var(--bot-msg-bg);
+            border: 1px solid var(--border-color);
+            border-bottom-left-radius: 2px;
+        }
+
+        .thinking-container {
+            margin-bottom: 14px;
+            border-radius: 10px;
+            background: var(--think-bg);
+            border: 1px dashed var(--think-border);
+            overflow: hidden;
+            font-size: 0.92rem;
+        }
+
+        .thinking-toggle {
+            padding: 8px 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            user-select: none;
+            color: var(--think-text);
+            font-weight: 600;
+            background: rgba(59, 130, 246, 0.05);
+        }
+
+        .thinking-toggle:hover {
+            background: rgba(59, 130, 246, 0.12);
+        }
+
+        .thinking-content {
+            padding: 10px 14px;
+            color: #cbd5e1;
+            font-family: Consolas, monospace;
+            font-size: 0.88rem;
+            line-height: 1.5;
+            white-space: pre-wrap;
+            border-top: 1px solid var(--think-border);
+            max-height: 250px;
+            overflow-y: auto;
+        }
+
+        .thinking-content.hidden {
+            display: none;
+        }
+
+        .pulse {
+            display: inline-block;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 0.4; }
+            50% { opacity: 1; }
+            100% { opacity: 0.4; }
+        }
+
+        pre {
+            background: var(--code-bg);
+            padding: 14px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 12px 0;
+            border: 1px solid var(--border-color);
+            font-family: 'Cascadia Code', Consolas, monospace;
+            font-size: 0.95rem;
+        }
+
+        code {
+            font-family: 'Cascadia Code', Consolas, monospace;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+
+        pre code {
+            background: transparent;
+            padding: 0;
+        }
+
+        .input-container {
+            padding: 16px 20px;
+            background: var(--bg-color);
+            display: flex;
+            gap: 12px;
+            align-items: flex-end;
+            border-top: 1px solid var(--border-color);
+        }
+
+        textarea {
+            flex: 1;
+            background: var(--chat-bg);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 14px 16px;
+            font-size: 1.05rem;
+            resize: none;
+            outline: none;
+            min-height: 52px;
+            max-height: 180px;
+            line-height: 1.5;
+            font-family: inherit;
+        }
+
+        textarea:focus {
+            border-color: var(--accent-color);
+        }
+
+        button.send-btn {
+            background: var(--accent-color);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            padding: 14px 22px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+            height: 52px;
+        }
+
+        button.send-btn:hover {
+            background: var(--accent-hover);
+        }
+
+        button.send-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .tips {
+            padding: 0 20px 10px;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="main-container">
+        <header>
+            <div class="header-title">
+                <span class="status-dot"></span>
+                <span>Qwen AI Studio (Локально)</span>
+            </div>
+            <div class="header-controls">
+                <button id="toggleManageBtn" class="btn-manage">⚙️ Модели (Скачать / Удалить)</button>
+                <select id="modelSelect" class="model-select">
+                    <option value="">Загрузка моделей...</option>
+                </select>
+            </div>
+        </header>
+
+        <!-- Панель управления моделями: Скачивание + Удаление -->
+        <div id="managePanel" class="manage-panel" style="display: none;">
+            <div>
+                <div class="panel-section-title">📥 Скачать новую модель</div>
+                <div class="download-row">
+                    <input type="text" id="downloadInput" class="download-input" placeholder="Имя модели (например: qwen3:14b)" value="qwen3:14b">
+                    <button id="startDownloadBtn" class="btn-download">Скачать</button>
+                </div>
+            </div>
+
+            <div class="quick-tags">
+                <span style="font-size:0.85rem; color: var(--text-secondary);">Быстрый выбор:</span>
+                <span class="tag-pill" onclick="setDlTag('qwen3:8b')">⭐ Qwen3 8B (Флагман 5.2 GB)</span>
+                <span class="tag-pill" onclick="setDlTag('qwen3:14b')">🔥 Qwen3 14B (Тяжелая 9.0 GB)</span>
+                <span class="tag-pill" onclick="setDlTag('qwen2.5-coder:7b')">💻 Qwen 2.5 Coder 7B (Код 4.7 GB)</span>
+                <span class="tag-pill" onclick="setDlTag('qwen2.5-coder:14b')">🚀 Qwen 2.5 Coder 14B (Код 9.0 GB)</span>
+                <span class="tag-pill" onclick="setDlTag('qwen3:30b-a3b')">⚡ Qwen3 30B-A3B (MoE 18 GB)</span>
+                <span class="tag-pill" onclick="setDlTag('deepseek-r1:8b')">🧠 DeepSeek R1 8B (Мыслитель)</span>
+            </div>
+
+            <div id="progressBox" class="progress-box" style="display: none;">
+                <div class="progress-header">
+                    <span id="dlStatusText">Подготовка к загрузке...</span>
+                    <span id="dlPercentText" style="color: #2ea043;">0%</span>
+                </div>
+                <div class="progress-bar-bg">
+                    <div id="dlProgressBar" class="progress-bar-fill"></div>
+                </div>
+            </div>
+
+            <div style="border-top: 1px solid var(--border-color); padding-top: 12px;">
+                <div class="panel-section-title">💾 Установленные модели на твоём ПК</div>
+                <div id="installedModelsList" class="installed-models-list"></div>
+            </div>
+        </div>
+
+        <div id="chatMessages" class="chat-messages">
+            <div class="message assistant">
+                <div class="message-header">
+                    <span>Qwen</span>
+                    <span class="model-badge">Система</span>
+                </div>
+                <div class="message-bubble">Привет! Я локальная нейросеть на твоем компьютере. Выбирай модель сверху или скачивай новые через кнопку «⚙️ Модели». Логи пишутся в файл app.log.</div>
+            </div>
+        </div>
+
+        <div class="input-container">
+            <textarea id="promptInput" placeholder="Напиши вопрос или попроси код (например: 'Напиши шаблон кнопки в HTML с градиентом')..." rows="1"></textarea>
+            <button id="sendBtn" class="send-btn">Отправить</button>
+        </div>
+        <div class="tips">Нажми Enter для отправки, Shift+Enter для новой строки. Работает офлайн на RX 6600.</div>
+    </div>
+
+    <div id="toastNotify" class="toast-notify"></div>
+
+    <script>
+        const chatMessages = document.getElementById('chatMessages');
+        const promptInput = document.getElementById('promptInput');
+        const sendBtn = document.getElementById('sendBtn');
+        const modelSelect = document.getElementById('modelSelect');
+
+        // Управление панелью
+        const toggleManageBtn = document.getElementById('toggleManageBtn');
+        const managePanel = document.getElementById('managePanel');
+        const downloadInput = document.getElementById('downloadInput');
+        const startDownloadBtn = document.getElementById('startDownloadBtn');
+        const progressBox = document.getElementById('progressBox');
+        const dlStatusText = document.getElementById('dlStatusText');
+        const dlPercentText = document.getElementById('dlPercentText');
+        const dlProgressBar = document.getElementById('dlProgressBar');
+        const installedModelsList = document.getElementById('installedModelsList');
+        const toastNotify = document.getElementById('toastNotify');
+
+        let installedModelsCache = [];
+        let chatHistory = [
+            { role: "system", content: "Ты полезный и умный ИИ-ассистент. Всегда отвечай на русском языке. Будь точен, вежлив и давай качественные примеры кода." }
+        ];
+
+        // Отправка лога на сервер
+        function logMessage(level, msg) {
+            console.log(`[${level}] ${msg}`);
+            fetch('/api/client-log', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ level: level, message: msg })
+            }).catch(() => {});
+        }
+
+        // Показ всплывающего уведомления
+        function showToast(text, duration = 3000) {
+            toastNotify.innerText = text;
+            toastNotify.style.display = 'block';
+            setTimeout(() => {
+                toastNotify.style.display = 'none';
+            }, duration);
+        }
+
+        toggleManageBtn.addEventListener('click', () => {
+            const isHidden = managePanel.style.display === 'none';
+            managePanel.style.display = isHidden ? 'flex' : 'none';
+            if (isHidden) {
+                renderCards();
+            }
+        });
+
+        function setDlTag(name) {
+            downloadInput.value = name;
+        }
+
+        // Динамическая загрузка списка установленных моделей из Ollama
+        async function loadInstalledModels() {
+            try {
+                logMessage('INFO', 'Запрос списка установленных моделей (/api/tags)...');
+                const res = await fetch('/api/tags', { cache: 'no-store' });
+                if (!res.ok) throw new Error('Не удалось получить список моделей: HTTP ' + res.status);
+                const data = await res.json();
+                installedModelsCache = data.models || [];
+
+                logMessage('INFO', `Найдено моделей на диске: ${installedModelsCache.length}`);
+
+                // Определяем текущую выбранную модель
+                let savedModel = localStorage.getItem('last_selected_model');
+                let validSelection = installedModelsCache.find(m => m.name === savedModel);
+
+                // Если сохраненная модель не существует, выбираем первую доступную
+                if (!validSelection && installedModelsCache.length > 0) {
+                    savedModel = installedModelsCache[0].name;
+                    localStorage.setItem('last_selected_model', savedModel);
+                }
+
+                // Заполняем выпадающий список
+                modelSelect.innerHTML = '';
+                if (installedModelsCache.length === 0) {
+                    modelSelect.innerHTML = '<option value="">Нет установленных моделей</option>';
+                } else {
+                    installedModelsCache.forEach(m => {
+                        const opt = document.createElement('option');
+                        opt.value = m.name;
+                        const sizeGB = (m.size / (1024 * 1024 * 1024)).toFixed(1);
+                        const paramSize = m.details && m.details.parameter_size ? m.details.parameter_size : '';
+                        opt.innerText = `${m.name} (${sizeGB} GB ${paramSize ? '• ' + paramSize : ''})`;
+                        if (m.name === savedModel) {
+                            opt.selected = true;
+                        }
+                        modelSelect.appendChild(opt);
+                    });
+                    modelSelect.value = savedModel;
+                }
+
+                renderCards();
+
+            } catch (err) {
+                logMessage('ERROR', 'Ошибка загрузки моделей: ' + err.message);
+                showToast('Ошибка загрузки моделей: ' + err.message);
+            }
+        }
+
+        // Отрисовка карточек установленных моделей
+        function renderCards() {
+            installedModelsList.innerHTML = '';
+            const currentSelected = modelSelect.value;
+
+            if (installedModelsCache.length === 0) {
+                installedModelsList.innerHTML = '<div style="color:var(--text-secondary);">Модели не найдены.</div>';
+                return;
+            }
+
+            installedModelsCache.forEach(m => {
+                const name = m.name;
+                const sizeGB = (m.size / (1024 * 1024 * 1024)).toFixed(1);
+                const paramSize = m.details && m.details.parameter_size ? m.details.parameter_size : '';
+                const isActive = name === currentSelected;
+
+                const card = document.createElement('div');
+                card.className = `model-card ${isActive ? 'active' : ''}`;
+                card.innerHTML = `
+                    <div class="model-card-info">
+                        <span class="model-card-name">${name}</span>
+                        <span class="model-card-size">${sizeGB} GB ${paramSize ? '• ' + paramSize : ''}</span>
+                    </div>
+                    <div class="model-card-actions">
+                        <button class="btn-select-model" onclick="applyModelSelection('${name}')">${isActive ? 'Выбрана' : 'Выбрать'}</button>
+                        <button class="btn-delete-model" onclick="deleteModel('${name}')">Удалить</button>
+                    </div>
+                `;
+                installedModelsList.appendChild(card);
+            });
+        }
+
+        // Проверка и выбор модели (без сброса селектора!)
+        function applyModelSelection(name) {
+            const exists = installedModelsCache.some(m => m.name === name);
+            if (!exists) {
+                logMessage('WARN', `Попытка выбора несуществующей модели: ${name}`);
+                showToast(`Ошибка: модель ${name} не найдена в списке`);
+                return;
+            }
+
+            modelSelect.value = name;
+            localStorage.setItem('last_selected_model', name);
+            logMessage('INFO', `Пользователь выбрал модель: ${name}`);
+            showToast(`✅ Выбрана модель: ${name}`);
+            renderCards();
+            managePanel.style.display = 'none';
+        }
+
+        modelSelect.addEventListener('change', () => {
+            const name = modelSelect.value;
+            localStorage.setItem('last_selected_model', name);
+            logMessage('INFO', `Селектор переключен на: ${name}`);
+            showToast(`✅ Выбрана модель: ${name}`);
+            renderCards();
+        });
+
+        // Удаление модели с проверками и подтверждением
+        async function deleteModel(name) {
+            const modelInfo = installedModelsCache.find(m => m.name === name);
+            const sizeGB = modelInfo ? (modelInfo.size / (1024 * 1024 * 1024)).toFixed(1) : '?';
+
+            if (!confirm(`Точно удалить модель "${name}"?\nОсвободится: ${sizeGB} GB на диске.`)) {
+                logMessage('INFO', `Удаление модели ${name} отменено пользователем.`);
+                return;
+            }
+
+            logMessage('WARN', `Начало удаления модели: ${name} (${sizeGB} GB)...`);
+            showToast(`Удаление ${name}...`);
+
+            try {
+                const res = await fetch('/api/delete', {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: name })
+                });
+
+                if (res.ok) {
+                    logMessage('INFO', `Модель ${name} успешно удалена.`);
+                    showToast(`🗑️ Модель ${name} удалена, диск очищен!`);
+                    await loadInstalledModels();
+                } else {
+                    const errText = await res.text();
+                    throw new Error(errText || 'HTTP ' + res.status);
+                }
+            } catch (err) {
+                logMessage('ERROR', `Ошибка удаления модели ${name}: ${err.message}`);
+                showToast(`Ошибка при удалении: ${err.message}`);
+            }
+        }
+
+        // Скачивание новой модели с проверками
+        startDownloadBtn.addEventListener('click', startDownloadModel);
+
+        async function startDownloadModel() {
+            const modelName = downloadInput.value.trim();
+            if (!modelName) {
+                showToast('Введите название модели');
+                return;
+            }
+
+            // Проверка: может модель уже установлена?
+            const alreadyInstalled = installedModelsCache.some(m => m.name === modelName);
+            if (alreadyInstalled) {
+                if (!confirm(`Модель "${modelName}" уже установлена на твоем ПК.\nСкачать её заново?`)) {
+                    applyModelSelection(modelName);
+                    return;
+                }
+            }
+
+            startDownloadBtn.disabled = true;
+            progressBox.style.display = 'flex';
+            dlProgressBar.style.width = '0%';
+            dlPercentText.innerText = '0%';
+            dlStatusText.innerText = `Подключение к репозиторию для ${modelName}...`;
+
+            logMessage('INFO', `Запуск скачивания модели: ${modelName}`);
+
+            try {
+                const res = await fetch('/api/pull', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: modelName, stream: true })
+                });
+
+                if (!res.ok) throw new Error('Ошибка сервера при загрузке: HTTP ' + res.status);
+
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder();
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    const chunk = decoder.decode(value, { stream: true });
+                    const lines = chunk.split('\n');
+
+                    for (const line of lines) {
+                        if (!line.trim()) continue;
+                        try {
+                            const data = JSON.parse(line);
+                            
+                            if (data.total && data.completed) {
+                                const pct = Math.round((data.completed / data.total) * 100);
+                                dlProgressBar.style.width = pct + '%';
+                                dlPercentText.innerText = pct + '%';
+
+                                const doneMB = (data.completed / (1024 * 1024)).toFixed(0);
+                                const totalMB = (data.total / (1024 * 1024)).toFixed(0);
+                                dlStatusText.innerText = `Скачивание: ${doneMB} MB / ${totalMB} MB (${pct}%)`;
+                            } else if (data.status) {
+                                dlStatusText.innerText = data.status;
+                            }
+                        } catch (e) {}
+                    }
+                }
+
+                dlProgressBar.style.width = '100%';
+                dlPercentText.innerText = '100%';
+                dlStatusText.innerText = `✅ Модель ${modelName} успешно загружена и проверена!`;
+                logMessage('INFO', `Модель ${modelName} успешно загружена на 100%.`);
+
+                // Обновляем список моделей из Ollama и выбираем новую
+                await loadInstalledModels();
+                applyModelSelection(modelName);
+
+            } catch (err) {
+                logMessage('ERROR', `Сбой скачивания ${modelName}: ${err.message}`);
+                dlStatusText.innerText = 'Ошибка загрузки: ' + err.message;
+            } finally {
+                startDownloadBtn.disabled = false;
+            }
+        }
+
+        promptInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        sendBtn.addEventListener('click', sendMessage);
+
+        function createAssistantMessage(modelName) {
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'message assistant';
+
+            const headerDiv = document.createElement('div');
+            headerDiv.className = 'message-header';
+            headerDiv.innerHTML = `<span>Qwen</span> <span class="model-badge">${modelName}</span>`;
+
+            const thinkContainer = document.createElement('div');
+            thinkContainer.className = 'thinking-container';
+            thinkContainer.style.display = 'none';
+
+            const thinkToggle = document.createElement('div');
+            thinkToggle.className = 'thinking-toggle';
+            thinkToggle.innerHTML = `<span>💭 Рассуждения</span> <span class="pulse">●</span>`;
+
+            const thinkContent = document.createElement('div');
+            thinkContent.className = 'thinking-content';
+
+            thinkToggle.onclick = () => {
+                thinkContent.classList.toggle('hidden');
+            };
+
+            thinkContainer.appendChild(thinkToggle);
+            thinkContainer.appendChild(thinkContent);
+
+            const bubbleDiv = document.createElement('div');
+            bubbleDiv.className = 'message-bubble';
+            bubbleDiv.innerText = 'Думаю...';
+
+            msgDiv.appendChild(headerDiv);
+            msgDiv.appendChild(thinkContainer);
+            msgDiv.appendChild(bubbleDiv);
+            chatMessages.appendChild(msgDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+
+            return { thinkContainer, thinkToggle, thinkContent, bubbleDiv };
+        }
+
+        async function sendMessage() {
+            const text = promptInput.value.trim();
+            if (!text) return;
+
+            const selectedModel = modelSelect.value;
+            if (!selectedModel) {
+                showToast('Ошибка: не выбрана модель');
+                return;
+            }
+
+            promptInput.value = '';
+            sendBtn.disabled = true;
+
+            const userMsgDiv = document.createElement('div');
+            userMsgDiv.className = 'message user';
+            userMsgDiv.innerHTML = `
+                <div class="message-header">Вы</div>
+                <div class="message-bubble">${escapeHtml(text)}</div>
+            `;
+            chatMessages.appendChild(userMsgDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+
+            chatHistory.push({ role: 'user', content: text });
+            logMessage('INFO', `Запрос к модели [${selectedModel}]: "${text.substring(0, 50)}..."`);
+
+            const assistantUi = createAssistantMessage(selectedModel);
+
+            try {
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        model: selectedModel,
+                        messages: chatHistory,
+                        stream: true
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Ошибка связи с сервером Ollama: HTTP ' + response.status);
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let fullThinking = '';
+                let fullAnswer = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    const chunk = decoder.decode(value, { stream: true });
+                    const lines = chunk.split('\n');
+
+                    for (const line of lines) {
+                        if (!line.trim()) continue;
+                        try {
+                            const parsed = JSON.parse(line);
+                            
+                            if (parsed.message && parsed.message.thinking) {
+                                assistantUi.thinkContainer.style.display = 'block';
+                                fullThinking += parsed.message.thinking;
+                                assistantUi.thinkContent.innerText = fullThinking;
+                                chatMessages.scrollTop = chatMessages.scrollHeight;
+                            }
+
+                            if (parsed.message && parsed.message.content) {
+                                fullAnswer += parsed.message.content;
+                                assistantUi.bubbleDiv.innerText = fullAnswer;
+                                chatMessages.scrollTop = chatMessages.scrollHeight;
+                            }
+                        } catch (err) {}
+                    }
+                }
+
+                assistantUi.thinkToggle.innerHTML = `<span>💭 Рассуждения (нажми, чтобы скрыть/показать)</span>`;
+                chatHistory.push({ role: 'assistant', content: fullAnswer });
+                logMessage('INFO', `Ответ от [${selectedModel}] успешно получен.`);
+
+            } catch (error) {
+                logMessage('ERROR', `Ошибка генерации ответа [${selectedModel}]: ${error.message}`);
+                assistantUi.bubbleDiv.innerText = 'Ошибка: ' + error.message;
+            } finally {
+                sendBtn.disabled = false;
+                promptInput.focus();
+            }
+        }
+
+        function escapeHtml(text) {
+            return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        }
+
+        // Запуск при старте
+        window.addEventListener('DOMContentLoaded', () => {
+            loadInstalledModels();
+        });
+    </script>
+</body>
+</html>

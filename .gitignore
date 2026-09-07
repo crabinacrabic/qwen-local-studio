@@ -1,0 +1,16 @@
+# Logs
+*.log
+app.log
+
+# Model weights and binaries
+*.bin
+*.gguf
+*.safetensors
+*.onnx
+models/
+blobs/
+
+# Node & OS
+node_modules/
+.DS_Store
+Thumbs.db
