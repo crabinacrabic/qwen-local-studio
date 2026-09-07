@@ -6,9 +6,15 @@ const PORT = 3000;
 const OLLAMA_PORT = 11434;
 const LOG_FILE = path.join(__dirname, 'app.log');
 
-// Функция записи в лог-файл и консоль
+// Функция записи в лог-файл и консоль с локальным временем (не UTC!)
+function getLocalTimestamp() {
+    const d = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
 function writeLog(level, message) {
-    const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    const timestamp = getLocalTimestamp();
     const logLine = `[${timestamp}] [${level}] ${message}\n`;
     process.stdout.write(logLine);
     try {
