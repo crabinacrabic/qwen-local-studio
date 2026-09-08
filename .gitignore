@@ -10,6 +10,10 @@ app.log
 models/
 blobs/
 
+# Knowledge Base & RAG
+knowledge/
+knowledge_index.json
+
 # Node & OS
 node_modules/
 .DS_Store

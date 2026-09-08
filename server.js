@@ -6,6 +6,17 @@ const { exec, spawn } = require('child_process');
 const PORT = 3000;
 const OLLAMA_PORT = 11434;
 const LOG_FILE = path.join(__dirname, 'app.log');
+const KNOWLEDGE_DIR = path.join(__dirname, 'knowledge');
+const INDEX_FILE = path.join(__dirname, 'knowledge_index.json');
+
+// Обеспечиваем наличие папки для документов базы знаний
+if (!fs.existsSync(KNOWLEDGE_DIR)) {
+    try {
+        fs.mkdirSync(KNOWLEDGE_DIR, { recursive: true });
+    } catch (e) {
+        console.error('Ошибка создания папки knowledge:', e);
+    }
+}
 
 // Функция записи в лог-файл и консоль с локальным временем (не UTC!)
 function getLocalTimestamp() {
@@ -48,29 +59,418 @@ function ensureOllamaRunning() {
     });
 }
 
+// ==========================================
+// RAG: Векторные эмбеддинги и семантический поиск
+// ==========================================
+
+// Загрузка индекса из JSON
+function loadKnowledgeIndex() {
+    try {
+        if (fs.existsSync(INDEX_FILE)) {
+            const raw = fs.readFileSync(INDEX_FILE, 'utf8');
+            return JSON.parse(raw);
+        }
+    } catch (e) {
+        writeLog('ERROR', 'Ошибка чтения knowledge_index.json: ' + e.message);
+    }
+    return [];
+}
+
+// Сохранение индекса в JSON
+function saveKnowledgeIndex(chunks) {
+    try {
+        fs.writeFileSync(INDEX_FILE, JSON.stringify(chunks, null, 2), 'utf8');
+        return true;
+    } catch (e) {
+        writeLog('ERROR', 'Ошибка записи knowledge_index.json: ' + e.message);
+        return false;
+    }
+}
+
+// Получение векторного эмбеддинга от локальной Ollama (nomic-embed-text)
+function getEmbedding(text) {
+    return new Promise((resolve, reject) => {
+        const payload = JSON.stringify({
+            model: 'nomic-embed-text',
+            prompt: text
+        });
+
+        const req = http.request({
+            hostname: '127.0.0.1',
+            port: OLLAMA_PORT,
+            path: '/api/embeddings',
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(payload)
+            }
+        }, (res) => {
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', () => {
+                try {
+                    const json = JSON.parse(data);
+                    if (json.embedding && Array.isArray(json.embedding)) {
+                        resolve(json.embedding);
+                    } else {
+                        reject(new Error(json.error || 'Ollama не вернула вектор эмбеддинга'));
+                    }
+                } catch (e) {
+                    reject(new Error('Сбой парсинга ответа эмбеддинга: ' + e.message));
+                }
+            });
+        });
+
+        req.on('error', (err) => {
+            reject(new Error('Ошибка соединения с Ollama: ' + err.message));
+        });
+
+        req.setTimeout(30000, () => {
+            req.destroy();
+            reject(new Error('Таймаут генерации эмбеддинга'));
+        });
+
+        req.write(payload);
+        req.end();
+    });
+}
+
+// Евклидова длина (норма) вектора
+function vectorNorm(vec) {
+    let sum = 0;
+    for (let i = 0; i < vec.length; i++) {
+        sum += vec[i] * vec[i];
+    }
+    return Math.sqrt(sum);
+}
+
+// Косинусное сходство двух векторов
+function cosineSimilarity(vecA, normA, vecB, normB) {
+    if (!vecA || !vecB || vecA.length !== vecB.length) return 0;
+    let dot = 0;
+    for (let i = 0; i < vecA.length; i++) {
+        dot += vecA[i] * vecB[i];
+    }
+    const denom = normA * normB;
+    return denom === 0 ? 0 : dot / denom;
+}
+
+// Интеллектуальное разбиение текста на фрагменты (чанки) с перекрытием
+function chunkText(text, maxChars = 600, overlap = 80) {
+    if (!text || text.trim().length === 0) return [];
+
+    const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+    const paragraphs = normalized.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+    const chunks = [];
+    let currentChunk = '';
+
+    for (const para of paragraphs) {
+        if (para.length > maxChars) {
+            const sentences = para.split(/(?<=[.?!;:\n])\s+/).filter(Boolean);
+            for (const s of sentences) {
+                if ((currentChunk + ' ' + s).trim().length > maxChars) {
+                    if (currentChunk.trim().length > 0) {
+                        chunks.push(currentChunk.trim());
+                        const words = currentChunk.split(/\s+/);
+                        let overlapText = '';
+                        for (let i = words.length - 1; i >= 0; i--) {
+                            if ((words[i] + ' ' + overlapText).length <= overlap) {
+                                overlapText = (words[i] + ' ' + overlapText).trim();
+                            } else break;
+                        }
+                        currentChunk = (overlapText + ' ' + s).trim();
+                    } else {
+                        let remaining = s;
+                        while (remaining.length > maxChars) {
+                            chunks.push(remaining.slice(0, maxChars).trim());
+                            remaining = remaining.slice(maxChars - overlap).trim();
+                        }
+                        currentChunk = remaining;
+                    }
+                } else {
+                    currentChunk = currentChunk ? (currentChunk + '\n' + s).trim() : s;
+                }
+            }
+        } else {
+            if ((currentChunk + '\n\n' + para).trim().length > maxChars) {
+                if (currentChunk.trim().length > 0) {
+                    chunks.push(currentChunk.trim());
+                    const words = currentChunk.split(/\s+/);
+                    let overlapText = '';
+                    for (let i = words.length - 1; i >= 0; i--) {
+                        if ((words[i] + ' ' + overlapText).length <= overlap) {
+                            overlapText = (words[i] + ' ' + overlapText).trim();
+                        } else break;
+                    }
+                    currentChunk = (overlapText + '\n\n' + para).trim();
+                } else {
+                    currentChunk = para;
+                }
+            } else {
+                currentChunk = currentChunk ? (currentChunk + '\n\n' + para).trim() : para;
+            }
+        }
+    }
+
+    if (currentChunk && currentChunk.trim().length > 0) {
+        chunks.push(currentChunk.trim());
+    }
+
+    return chunks.filter(c => c.length >= 15);
+}
+
+// Парсер JSON тела запроса
+function readJsonBody(req, cb) {
+    let body = '';
+    req.on('data', chunk => {
+        body += chunk;
+        if (body.length > 50 * 1024 * 1024) {
+            req.destroy();
+            cb(new Error('Размер данных превышает лимит 50 МБ'));
+        }
+    });
+    req.on('end', () => {
+        try {
+            const data = JSON.parse(body);
+            cb(null, data);
+        } catch (e) {
+            cb(e, null);
+        }
+    });
+    req.on('error', cb);
+}
+
 writeLog('INFO', '=== Запуск Qwen Local Server ===');
 ensureOllamaRunning();
 
 const server = http.createServer((req, res) => {
-    // Логирование событий от фронтенда
+    // 1. Логирование событий от фронтенда
     if (req.url === '/api/client-log' && req.method === 'POST') {
-        let body = '';
-        req.on('data', chunk => body += chunk);
-        req.on('end', () => {
-            try {
-                const data = JSON.parse(body);
-                writeLog(data.level || 'INFO', `[UI] ${data.message}`);
-                res.writeHead(200, { 'Content-Type': 'application/json' });
-                res.end('{"status":"ok"}');
-            } catch (err) {
+        readJsonBody(req, (err, data) => {
+            if (err || !data) {
                 res.writeHead(400);
                 res.end('bad json');
+                return;
+            }
+            writeLog(data.level || 'INFO', `[UI] ${data.message}`);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end('{"status":"ok"}');
+        });
+        return;
+    }
+
+    // 2. RAG: Получение списка документов в базе
+    if (req.url === '/api/rag/documents' && req.method === 'GET') {
+        const index = loadKnowledgeIndex();
+        const docMap = new Map();
+        for (const item of index) {
+            if (!docMap.has(item.filename)) {
+                docMap.set(item.filename, {
+                    filename: item.filename,
+                    chunksCount: 0,
+                    totalChars: 0,
+                    createdAt: item.createdAt || 'Неизвестно'
+                });
+            }
+            const doc = docMap.get(item.filename);
+            doc.chunksCount++;
+            doc.totalChars += (item.text ? item.text.length : 0);
+        }
+        const documents = Array.from(docMap.values());
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ status: 'ok', documents, totalChunks: index.length }));
+        return;
+    }
+
+    // 3. RAG: Индексация нового документа (разбивка + эмбеддинги)
+    if (req.url === '/api/rag/index' && req.method === 'POST') {
+        readJsonBody(req, async (err, body) => {
+            if (err || !body || !body.filename || !body.text) {
+                res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ error: 'Требуются поля filename и text' }));
+                return;
+            }
+
+            const filename = path.basename(body.filename).trim();
+            const text = String(body.text).trim();
+
+            if (!filename || !text) {
+                res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ error: 'Пустое имя файла или содержимое' }));
+                return;
+            }
+
+            writeLog('INFO', `[RAG] Начало индексации документа: "${filename}" (${text.length} символов)...`);
+
+            // Сохраняем текстовый оригинал в папку knowledge
+            try {
+                fs.writeFileSync(path.join(KNOWLEDGE_DIR, filename), text, 'utf8');
+            } catch (e) {
+                writeLog('WARN', `[RAG] Не удалось сохранить копию в knowledge/${filename}: ${e.message}`);
+            }
+
+            const chunks = chunkText(text);
+            if (chunks.length === 0) {
+                res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ error: 'Текст слишком короткий для индексации' }));
+                return;
+            }
+
+            writeLog('INFO', `[RAG] Документ "${filename}" разбит на ${chunks.length} фрагментов. Вычисление векторов через nomic-embed-text...`);
+
+            try {
+                const newChunks = [];
+                for (let i = 0; i < chunks.length; i++) {
+                    const chunkStr = chunks[i];
+                    const embedding = await getEmbedding(chunkStr);
+                    const norm = vectorNorm(embedding);
+                    newChunks.push({
+                        id: `${filename}_chunk_${i}_${Date.now()}`,
+                        filename: filename,
+                        chunkIndex: i,
+                        text: chunkStr,
+                        embedding: embedding,
+                        norm: norm,
+                        createdAt: getLocalTimestamp()
+                    });
+                }
+
+                // Заменяем старые чанки с таким же именем файла
+                const currentIndex = loadKnowledgeIndex();
+                const filteredIndex = currentIndex.filter(c => c.filename !== filename);
+                const updatedIndex = [...filteredIndex, ...newChunks];
+                saveKnowledgeIndex(updatedIndex);
+
+                writeLog('INFO', `[RAG] Документ "${filename}" успешно добавлен в базу (${chunks.length} чанков). Всего чанков в базе: ${updatedIndex.length}`);
+
+                res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({
+                    status: 'ok',
+                    filename: filename,
+                    chunksIndexed: chunks.length,
+                    totalChunksInDb: updatedIndex.length
+                }));
+            } catch (embErr) {
+                writeLog('ERROR', `[RAG] Сбой векторизации для "${filename}": ${embErr.message}`);
+                res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ error: 'Ошибка векторизации: ' + embErr.message }));
             }
         });
         return;
     }
 
-    // Проксирование запросов к Ollama
+    // 4. RAG: Векторный семантический поиск по базе знаний
+    if (req.url === '/api/rag/search' && req.method === 'POST') {
+        readJsonBody(req, async (err, body) => {
+            if (err || !body || !body.query) {
+                res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ error: 'Требуется поле query' }));
+                return;
+            }
+
+            const query = String(body.query).trim();
+            const topK = parseInt(body.topK) || 3;
+            const minScore = typeof body.minScore === 'number' ? body.minScore : 0.35;
+
+            const index = loadKnowledgeIndex();
+            if (index.length === 0) {
+                res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ status: 'ok', results: [], totalIndexed: 0 }));
+                return;
+            }
+
+            try {
+                const queryVec = await getEmbedding(query);
+                const queryNorm = vectorNorm(queryVec);
+
+                const scored = [];
+                for (const item of index) {
+                    const itemNorm = item.norm || vectorNorm(item.embedding);
+                    const score = cosineSimilarity(queryVec, queryNorm, item.embedding, itemNorm);
+                    if (score >= minScore) {
+                        scored.push({
+                            filename: item.filename,
+                            chunkIndex: item.chunkIndex,
+                            text: item.text,
+                            score: score
+                        });
+                    }
+                }
+
+                scored.sort((a, b) => b.score - a.score);
+                const topResults = scored.slice(0, topK).map(r => ({
+                    filename: r.filename,
+                    chunkIndex: r.chunkIndex,
+                    text: r.text,
+                    score: Math.round(r.score * 100) / 100
+                }));
+
+                writeLog('INFO', `[RAG] Поиск "${query.substring(0, 40)}...": найдено ${topResults.length} совпадений (макс: ${topResults[0] ? topResults[0].score : 'нет'})`);
+
+                res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({
+                    status: 'ok',
+                    results: topResults,
+                    totalIndexed: index.length
+                }));
+            } catch (searchErr) {
+                writeLog('ERROR', `[RAG] Ошибка поиска: ${searchErr.message}`);
+                res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ error: searchErr.message }));
+            }
+        });
+        return;
+    }
+
+    // 5. RAG: Удаление документа из базы знаний
+    if (req.url === '/api/rag/delete' && req.method === 'POST') {
+        readJsonBody(req, (err, body) => {
+            if (err || !body || !body.filename) {
+                res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ error: 'Требуется поле filename' }));
+                return;
+            }
+
+            const filename = body.filename;
+            const index = loadKnowledgeIndex();
+            const initialCount = index.length;
+            const newIndex = index.filter(c => c.filename !== filename);
+            saveKnowledgeIndex(newIndex);
+
+            const filePath = path.join(KNOWLEDGE_DIR, filename);
+            if (fs.existsSync(filePath)) {
+                try { fs.unlinkSync(filePath); } catch (e) {}
+            }
+
+            writeLog('INFO', `[RAG] Документ "${filename}" удален (снято ${initialCount - newIndex.length} чанков).`);
+
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({
+                status: 'ok',
+                deleted: filename,
+                removedChunks: initialCount - newIndex.length,
+                remainingChunks: newIndex.length
+            }));
+        });
+        return;
+    }
+
+    // 6. RAG: Полная очистка базы знаний
+    if (req.url === '/api/rag/clear' && req.method === 'POST') {
+        saveKnowledgeIndex([]);
+        try {
+            const files = fs.readdirSync(KNOWLEDGE_DIR);
+            for (const file of files) {
+                try { fs.unlinkSync(path.join(KNOWLEDGE_DIR, file)); } catch (e) {}
+            }
+        } catch (e) {}
+        writeLog('WARN', '[RAG] Вся база знаний очищена пользователем.');
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ status: 'ok', message: 'База знаний полностью очищена' }));
+        return;
+    }
+
+    // 7. Проксирование остальных запросов к Ollama (/api/chat, /api/tags, /api/pull, /api/delete и т.д.)
     if (req.url.startsWith('/api/')) {
         writeLog('DEBUG', `Proxy ${req.method} ${req.url}`);
 
@@ -87,11 +487,10 @@ const server = http.createServer((req, res) => {
 
         proxyReq.on('error', (err) => {
             writeLog('ERROR', `Ошибка связи с Ollama (${req.url}): ${err.message}`);
-            // Если соединение отклонено, пробуем еще раз пнуть запуск Ollama
             if (err.code === 'ECONNREFUSED') {
                 ensureOllamaRunning();
             }
-            res.writeHead(502, { 'Content-Type': 'application/json' });
+            res.writeHead(502, { 'Content-Type': 'application/json; charset=utf-8' });
             res.end(JSON.stringify({ error: 'Служба Ollama еще запускается. Пожалуйста, обновите страницу через 3 секунды.' }));
         });
 

@@ -556,6 +556,111 @@
             color: var(--text-secondary);
             text-align: center;
         }
+
+        /* Стили для Базы Знаний (RAG) */
+        .btn-rag-toggle {
+            background: var(--chat-bg);
+            color: var(--text-secondary);
+            border: 1px solid var(--border-color);
+            padding: 8px 14px;
+            border-radius: 8px;
+            font-size: 0.88rem;
+            cursor: pointer;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s ease;
+            user-select: none;
+        }
+
+        .btn-rag-toggle:hover {
+            border-color: #4ade80;
+            color: #4ade80;
+        }
+
+        .btn-rag-toggle.active {
+            background: rgba(46, 160, 67, 0.18);
+            color: #4ade80;
+            border-color: #2ea043;
+            box-shadow: 0 0 10px rgba(46, 160, 67, 0.35);
+        }
+
+        .btn-rag-panel {
+            background: rgba(46, 160, 67, 0.12);
+            color: #4ade80;
+            border: 1px solid rgba(46, 160, 67, 0.35);
+            padding: 8px 14px;
+            border-radius: 8px;
+            font-size: 0.88rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s;
+        }
+
+        .btn-rag-panel:hover {
+            background: rgba(46, 160, 67, 0.25);
+        }
+
+        .rag-dropzone {
+            border: 2px dashed var(--border-color);
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            background: rgba(0, 0, 0, 0.25);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .rag-dropzone:hover, .rag-dropzone.dragover {
+            border-color: #4ade80;
+            background: rgba(46, 160, 67, 0.08);
+        }
+
+        .rag-source-box {
+            background: rgba(59, 130, 246, 0.07);
+            border: 1px solid rgba(59, 130, 246, 0.28);
+            border-radius: 8px;
+            padding: 10px 14px;
+            margin-bottom: 12px;
+            font-size: 0.86rem;
+        }
+
+        .rag-source-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+            font-weight: 600;
+            color: #93c5fd;
+            user-select: none;
+        }
+
+        .rag-source-content {
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid rgba(59, 130, 246, 0.2);
+            font-size: 0.83rem;
+            max-height: 220px;
+            overflow-y: auto;
+            line-height: 1.5;
+        }
+
+        .rag-source-content.hidden {
+            display: none;
+        }
+
+        .rag-badge-score {
+            background: rgba(46, 160, 67, 0.2);
+            color: #4ade80;
+            padding: 2px 7px;
+            border-radius: 4px;
+            font-size: 0.76rem;
+            font-weight: 600;
+        }
     </style>
 </head>
 <body>
@@ -566,7 +671,13 @@
                 <span>Qwen AI Studio (Локально)</span>
             </div>
             <div class="header-controls">
-                <button id="toggleManageBtn" class="btn-manage">⚙️ Модели (Скачать / Удалить)</button>
+                <button id="toggleRagBtn" class="btn-rag-toggle" title="Включить / отключить поиск по личным документам (RAG)">
+                    <span>📚 RAG: ВЫКЛ</span>
+                </button>
+                <button id="toggleRagPanelBtn" class="btn-rag-panel" title="Управление базой знаний">
+                    <span>📂 База знаний (<span id="ragDocsBadge">0</span>)</span>
+                </button>
+                <button id="toggleManageBtn" class="btn-manage">⚙️ Модели</button>
                 <select id="modelSelect" class="model-select">
                     <option value="">Загрузка моделей...</option>
                 </select>
@@ -609,6 +720,59 @@
             </div>
         </div>
 
+        <!-- Панель базы знаний (RAG) -->
+        <div id="ragPanel" class="manage-panel" style="display: none;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div class="panel-section-title" style="margin: 0;">📚 Локальная база знаний (RAG)</div>
+                <span style="font-size: 0.8rem; color: #4ade80; background: rgba(46, 160, 67, 0.15); padding: 3px 8px; border-radius: 6px;">Эмбеддинги: nomic-embed-text</span>
+            </div>
+            <div style="font-size: 0.86rem; color: var(--text-secondary); line-height: 1.4;">
+                Загружай документы, инструкции, код или заметки. Все фрагменты векторизуются локально и используются нейросетью Qwen для точных ответов на твои вопросы.
+            </div>
+
+            <!-- Дропзона загрузки файлов -->
+            <div id="ragDropzone" class="rag-dropzone">
+                <input type="file" id="ragFileInput" style="display: none;" accept=".txt,.md,.json,.csv,.log,.js,.py,.ts,.html,.css,.xml,.yml,.yaml,.sql">
+                <div style="font-size: 1.8rem; margin-bottom: 6px;">📄</div>
+                <div style="font-weight: 600; font-size: 0.95rem;">
+                    Перетащи текстовый файл сюда или <span id="ragBrowseBtn" style="color: #4ade80; text-decoration: underline; cursor: pointer;">выбери с диска</span>
+                </div>
+                <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px;">
+                    Поддерживаются .txt, .md, .json, .csv, .log, исходный код (.py, .js, др.)
+                </div>
+            </div>
+
+            <!-- Ручной ввод / вставка текста -->
+            <div>
+                <div style="font-size: 0.88rem; font-weight: 600; color: var(--text-primary); margin-bottom: 6px;">Или вставь текст вручную:</div>
+                <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                    <input type="text" id="ragManualTitle" class="download-input" placeholder="Название заметки (например: Заметки_проекта.txt)" value="Заметки.txt">
+                    <button id="ragManualAddBtn" class="btn-download" style="background: #238636;">Индексировать текст</button>
+                </div>
+                <textarea id="ragManualText" class="download-input" placeholder="Вставь сюда текст, который модель должна запомнить..." style="width: 100%; height: 75px; resize: vertical; font-family: inherit; font-size: 0.9rem;"></textarea>
+            </div>
+
+            <!-- Прогресс индексации RAG -->
+            <div id="ragProgressBox" class="progress-box" style="display: none;">
+                <div class="progress-header">
+                    <span id="ragStatusText">Индексация документа...</span>
+                    <span id="ragPercentText" style="color: #4ade80;">Обработка...</span>
+                </div>
+                <div class="progress-bar-bg">
+                    <div id="ragProgressBar" class="progress-bar-fill" style="width: 100%; background: linear-gradient(90deg, #3b82f6, #4ade80);"></div>
+                </div>
+            </div>
+
+            <!-- Список проиндексированных документов -->
+            <div style="border-top: 1px solid var(--border-color); padding-top: 12px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <div class="panel-section-title" style="margin: 0;">💾 Документы в базе (<span id="ragDocCount">0</span>)</div>
+                    <button id="ragClearAllBtn" class="btn-delete-model" style="font-size: 0.76rem; padding: 4px 8px;">🗑️ Очистить всю базу</button>
+                </div>
+                <div id="ragDocumentsList" class="installed-models-list"></div>
+            </div>
+        </div>
+
         <div id="chatMessages" class="chat-messages">
             <div class="message assistant">
                 <div class="message-header">
@@ -634,7 +798,7 @@
         const sendBtn = document.getElementById('sendBtn');
         const modelSelect = document.getElementById('modelSelect');
 
-        // Управление панелью
+        // Управление панелью моделей
         const toggleManageBtn = document.getElementById('toggleManageBtn');
         const managePanel = document.getElementById('managePanel');
         const downloadInput = document.getElementById('downloadInput');
@@ -645,6 +809,28 @@
         const dlProgressBar = document.getElementById('dlProgressBar');
         const installedModelsList = document.getElementById('installedModelsList');
         const toastNotify = document.getElementById('toastNotify');
+
+        // Элементы RAG (Базы знаний)
+        const toggleRagBtn = document.getElementById('toggleRagBtn');
+        const toggleRagPanelBtn = document.getElementById('toggleRagPanelBtn');
+        const ragPanel = document.getElementById('ragPanel');
+        const ragDocsBadge = document.getElementById('ragDocsBadge');
+        const ragDocCount = document.getElementById('ragDocCount');
+        const ragDropzone = document.getElementById('ragDropzone');
+        const ragFileInput = document.getElementById('ragFileInput');
+        const ragBrowseBtn = document.getElementById('ragBrowseBtn');
+        const ragManualTitle = document.getElementById('ragManualTitle');
+        const ragManualText = document.getElementById('ragManualText');
+        const ragManualAddBtn = document.getElementById('ragManualAddBtn');
+        const ragProgressBox = document.getElementById('ragProgressBox');
+        const ragStatusText = document.getElementById('ragStatusText');
+        const ragPercentText = document.getElementById('ragPercentText');
+        const ragProgressBar = document.getElementById('ragProgressBar');
+        const ragDocumentsList = document.getElementById('ragDocumentsList');
+        const ragClearAllBtn = document.getElementById('ragClearAllBtn');
+
+        let ragEnabled = localStorage.getItem('rag_enabled') === '1';
+        let ragDocumentsCache = [];
 
         let installedModelsCache = [];
         let chatHistory = [
@@ -670,12 +856,45 @@
             }, duration);
         }
 
+        // Переключение панели моделей
         toggleManageBtn.addEventListener('click', () => {
             const isHidden = managePanel.style.display === 'none';
             managePanel.style.display = isHidden ? 'flex' : 'none';
             if (isHidden) {
+                ragPanel.style.display = 'none';
                 renderCards();
             }
+        });
+
+        // Переключение панели базы знаний (RAG)
+        toggleRagPanelBtn.addEventListener('click', () => {
+            const isHidden = ragPanel.style.display === 'none';
+            ragPanel.style.display = isHidden ? 'flex' : 'none';
+            if (isHidden) {
+                managePanel.style.display = 'none';
+                loadRagDocuments();
+            }
+        });
+
+        // Обновление состояния кнопки RAG
+        function updateRagButtonUI() {
+            if (ragEnabled) {
+                toggleRagBtn.classList.add('active');
+                toggleRagBtn.innerHTML = '<span>📚 RAG: ВКЛ</span>';
+                toggleRagBtn.title = 'База знаний ВКЛЮЧЕНА (нажмите, чтобы выключить)';
+            } else {
+                toggleRagBtn.classList.remove('active');
+                toggleRagBtn.innerHTML = '<span>📚 RAG: ВЫКЛ</span>';
+                toggleRagBtn.title = 'База знаний ВЫКЛЮЧЕНА (нажмите, чтобы включить)';
+            }
+        }
+
+        toggleRagBtn.addEventListener('click', () => {
+            ragEnabled = !ragEnabled;
+            localStorage.setItem('rag_enabled', ragEnabled ? '1' : '0');
+            updateRagButtonUI();
+            logMessage('INFO', `RAG переключен в состояние: ${ragEnabled ? 'ВКЛ' : 'ВЫКЛ'}`);
+            showToast(ragEnabled ? '📚 База знаний (RAG) ВКЛЮЧЕНА' : '📚 База знаний (RAG) ВЫКЛЮЧЕНА');
         });
 
         function setDlTag(name) {
@@ -919,6 +1138,246 @@
 
         sendBtn.addEventListener('click', sendMessage);
 
+        // ==========================================
+        // Управление Базой Знаний (RAG) на фронтенде
+        // ==========================================
+
+        // Загрузка списка документов базы знаний
+        async function loadRagDocuments() {
+            try {
+                const res = await fetch('/api/rag/documents', { cache: 'no-store' });
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                const data = await res.json();
+                ragDocumentsCache = data.documents || [];
+                
+                // Обновляем бейджи количества документов
+                ragDocsBadge.innerText = ragDocumentsCache.length;
+                ragDocCount.innerText = ragDocumentsCache.length;
+
+                renderRagDocuments();
+            } catch (err) {
+                logMessage('ERROR', 'Ошибка получения документов RAG: ' + err.message);
+            }
+        }
+
+        // Отрисовка списка документов в панели RAG
+        function renderRagDocuments() {
+            ragDocumentsList.innerHTML = '';
+            if (ragDocumentsCache.length === 0) {
+                ragDocumentsList.innerHTML = '<div style="color:var(--text-secondary); font-size:0.88rem; padding: 10px 0;">В базе пока нет документов. Загрузи файл или вставь текст выше!</div>';
+                return;
+            }
+
+            ragDocumentsCache.forEach(doc => {
+                const card = document.createElement('div');
+                card.className = 'model-card';
+                const sizeKB = (doc.totalChars / 1024).toFixed(1);
+                card.innerHTML = `
+                    <div class="model-card-info">
+                        <span class="model-card-name" title="${escapeHtml(doc.filename)}">📄 ${escapeHtml(doc.filename)}</span>
+                        <span class="model-card-size">${doc.chunksCount} фрагм. • ${sizeKB} КБ • ${doc.createdAt}</span>
+                    </div>
+                    <div class="model-card-actions">
+                        <button class="btn-delete-model" onclick="deleteRagDoc('${escapeHtml(doc.filename)}')">Удалить</button>
+                    </div>
+                `;
+                ragDocumentsList.appendChild(card);
+            });
+        }
+
+        // Удаление документа из базы знаний
+        async function deleteRagDoc(filename) {
+            if (!confirm(`Удалить документ "${filename}" из базы знаний?`)) return;
+
+            logMessage('INFO', `Удаление документа RAG: ${filename}`);
+            try {
+                const res = await fetch('/api/rag/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filename })
+                });
+                if (res.ok) {
+                    showToast(`🗑️ Документ "${filename}" удален`);
+                    await loadRagDocuments();
+                } else {
+                    throw new Error('HTTP ' + res.status);
+                }
+            } catch (err) {
+                logMessage('ERROR', `Ошибка удаления документа ${filename}: ${err.message}`);
+                showToast(`Ошибка удаления: ${err.message}`);
+            }
+        }
+
+        // Полная очистка базы знаний
+        ragClearAllBtn.addEventListener('click', async () => {
+            if (ragDocumentsCache.length === 0) {
+                showToast('База знаний уже пуста');
+                return;
+            }
+            if (!confirm('Точно очистить ВСЮ базу знаний? Все проиндексированные документы и векторы будут удалены.')) return;
+
+            logMessage('WARN', 'Очистка всей базы знаний...');
+            try {
+                const res = await fetch('/api/rag/clear', { method: 'POST' });
+                if (res.ok) {
+                    showToast('🗑️ Вся база знаний очищена');
+                    await loadRagDocuments();
+                } else {
+                    throw new Error('HTTP ' + res.status);
+                }
+            } catch (err) {
+                showToast('Ошибка очистки: ' + err.message);
+            }
+        });
+
+        // Индексация документа (отправка на сервер)
+        async function indexDocument(filename, text) {
+            if (!text || !text.trim()) {
+                showToast('Текст документа пуст');
+                return;
+            }
+
+            ragProgressBox.style.display = 'flex';
+            ragStatusText.innerText = `Индексация "${filename}" через nomic-embed-text...`;
+            ragPercentText.innerText = 'Векторизация...';
+
+            logMessage('INFO', `Отправка на индексацию: ${filename} (${text.length} симв.)`);
+
+            try {
+                const res = await fetch('/api/rag/index', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filename, text })
+                });
+
+                const data = await res.json();
+                if (!res.ok || data.error) {
+                    throw new Error(data.error || 'HTTP ' + res.status);
+                }
+
+                logMessage('INFO', `Документ ${filename} успешно добавлен: ${data.chunksIndexed} чанков.`);
+                showToast(`✅ "${filename}" проиндексирован (${data.chunksIndexed} чанков)!`);
+                await loadRagDocuments();
+
+                // Автоматически включаем RAG при добавлении первого документа
+                if (!ragEnabled) {
+                    ragEnabled = true;
+                    localStorage.setItem('rag_enabled', '1');
+                    updateRagButtonUI();
+                }
+
+            } catch (err) {
+                logMessage('ERROR', `Ошибка индексации "${filename}": ${err.message}`);
+                showToast(`Ошибка индексации: ${err.message}`);
+            } finally {
+                ragProgressBox.style.display = 'none';
+            }
+        }
+
+        // Ручная вставка текста
+        ragManualAddBtn.addEventListener('click', () => {
+            const title = ragManualTitle.value.trim() || `Заметка_${Date.now()}.txt`;
+            const text = ragManualText.value.trim();
+            if (!text) {
+                showToast('Введите текст для индексации');
+                return;
+            }
+            indexDocument(title, text);
+            ragManualText.value = '';
+        });
+
+        // Drag and drop для файлов
+        ragBrowseBtn.addEventListener('click', () => ragFileInput.click());
+        ragDropzone.addEventListener('click', (e) => {
+            if (e.target !== ragBrowseBtn) ragFileInput.click();
+        });
+
+        ragDropzone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            ragDropzone.classList.add('dragover');
+        });
+
+        ragDropzone.addEventListener('dragleave', () => {
+            ragDropzone.classList.remove('dragover');
+        });
+
+        ragDropzone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            ragDropzone.classList.remove('dragover');
+            if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                handleFileUpload(e.dataTransfer.files[0]);
+            }
+        });
+
+        ragFileInput.addEventListener('change', () => {
+            if (ragFileInput.files && ragFileInput.files.length > 0) {
+                handleFileUpload(ragFileInput.files[0]);
+                ragFileInput.value = '';
+            }
+        });
+
+        function handleFileUpload(file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const text = e.target.result;
+                indexDocument(file.name, text);
+            };
+            reader.onerror = () => {
+                showToast('Ошибка чтения файла: ' + file.name);
+            };
+            reader.readAsText(file);
+        }
+
+        // Отображение цитат источников в сообщении ассистента
+        function renderRagSources(container, sources) {
+            if (!sources || sources.length === 0) return;
+
+            container.innerHTML = '';
+            container.style.display = 'block';
+            const total = sources.length;
+            const maxScore = Math.round(sources[0].score * 100);
+
+            const box = document.createElement('div');
+            box.className = 'rag-source-box';
+
+            const header = document.createElement('div');
+            header.className = 'rag-source-header';
+            header.innerHTML = `
+                <span style="display:flex; align-items:center; gap:6px;">
+                    <span>📚 Использовано источников: <strong>${total}</strong> (совпадение до ${maxScore}%)</span>
+                </span>
+                <span class="rag-toggle-arrow" style="font-size:0.8rem; color:#93c5fd;">▼ Показать цитаты</span>
+            `;
+
+            const content = document.createElement('div');
+            content.className = 'rag-source-content hidden';
+
+            sources.forEach((s, idx) => {
+                const item = document.createElement('div');
+                item.style.marginBottom = idx === sources.length - 1 ? '0' : '10px';
+                item.style.paddingBottom = idx === sources.length - 1 ? '0' : '8px';
+                if (idx !== sources.length - 1) item.style.borderBottom = '1px dashed rgba(59, 130, 246, 0.2)';
+
+                item.innerHTML = `
+                    <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+                        <span style="font-weight:600; color:#93c5fd;">📄 ${escapeHtml(s.filename)} (фрагмент #${s.chunkIndex + 1})</span>
+                        <span class="rag-badge-score">${Math.round(s.score * 100)}% совпадение</span>
+                    </div>
+                    <div style="font-style:italic; color:#cbd5e1; font-size:0.82rem; background:rgba(0,0,0,0.25); padding:6px 10px; border-radius:6px; white-space:pre-wrap;">${escapeHtml(s.text)}</div>
+                `;
+                content.appendChild(item);
+            });
+
+            header.onclick = () => {
+                const isHidden = content.classList.toggle('hidden');
+                header.querySelector('.rag-toggle-arrow').innerText = isHidden ? '▼ Показать цитаты' : '▲ Скрыть цитаты';
+            };
+
+            box.appendChild(header);
+            box.appendChild(content);
+            container.appendChild(box);
+        }
+
         function createAssistantMessage(modelName) {
             const msgDiv = document.createElement('div');
             msgDiv.className = 'message assistant';
@@ -926,6 +1385,10 @@
             const headerDiv = document.createElement('div');
             headerDiv.className = 'message-header';
             headerDiv.innerHTML = `<span>Qwen</span> <span class="model-badge">${modelName}</span>`;
+
+            const sourcesContainer = document.createElement('div');
+            sourcesContainer.className = 'rag-sources-container';
+            sourcesContainer.style.display = 'none';
 
             const thinkContainer = document.createElement('div');
             thinkContainer.className = 'thinking-container';
@@ -950,12 +1413,13 @@
             bubbleDiv.innerText = 'Думаю...';
 
             msgDiv.appendChild(headerDiv);
+            msgDiv.appendChild(sourcesContainer);
             msgDiv.appendChild(thinkContainer);
             msgDiv.appendChild(bubbleDiv);
             chatMessages.appendChild(msgDiv);
             chatMessages.scrollTop = chatMessages.scrollHeight;
 
-            return { thinkContainer, thinkToggle, thinkContent, bubbleDiv };
+            return { sourcesContainer, thinkContainer, thinkToggle, thinkContent, bubbleDiv };
         }
 
         async function sendMessage() {
@@ -985,13 +1449,57 @@
 
             const assistantUi = createAssistantMessage(selectedModel);
 
+            // RAG: Семантический поиск по базе знаний, если RAG включен
+            let ragSources = [];
+            let messagesForOllama = [...chatHistory];
+
+            if (ragEnabled) {
+                assistantUi.bubbleDiv.innerText = '🔍 Поиск в локальной базе знаний...';
+                try {
+                    const searchRes = await fetch('/api/rag/search', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ query: text, topK: 3, minScore: 0.35 })
+                    });
+                    if (searchRes.ok) {
+                        const searchData = await searchRes.json();
+                        if (searchData.results && searchData.results.length > 0) {
+                            ragSources = searchData.results;
+                            renderRagSources(assistantUi.sourcesContainer, ragSources);
+                            logMessage('INFO', `[RAG] Найдено ${ragSources.length} релевантных источников для запроса.`);
+                        }
+                    }
+                } catch (ragErr) {
+                    logMessage('WARN', `[RAG] Ошибка поиска: ${ragErr.message}`);
+                }
+                assistantUi.bubbleDiv.innerText = 'Думаю...';
+            }
+
+            // Если найдены источники, внедряем их в системный контекст модели
+            if (ragSources.length > 0) {
+                const contextStr = ragSources.map((s, idx) => `--- Фрагмент ${idx + 1} (Файл: ${s.filename}, совпадение ${Math.round(s.score * 100)}%) ---\n${s.text}`).join('\n\n');
+
+                const augmentedPrompt = `Ты — полезный ИИ-ассистент с доступом к личным документам пользователя. Отвечай всегда на русском языке.
+Ниже предоставлен контекст из документов пользователя, найденный по его запросу:
+=== НАЧАЛО КОНТЕКСТА ИЗ ДОКУМЕНТОВ ===
+${contextStr}
+=== КОНЕЦ КОНТЕКСТА ИЗ ДОКУМЕНТОВ ===
+
+Используй этот контекст, чтобы максимально точно и полно ответить на вопрос. Если в документах нет нужной информации, ответь на основе своих общих знаний, но явно предупреди пользователя, что в его документах этого нет.`;
+
+                messagesForOllama = [
+                    { role: 'system', content: augmentedPrompt },
+                    ...chatHistory.filter(m => m.role !== 'system')
+                ];
+            }
+
             try {
                 const response = await fetch('/api/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         model: selectedModel,
-                        messages: chatHistory,
+                        messages: messagesForOllama,
                         stream: true
                     })
                 });
@@ -1053,6 +1561,8 @@
         // Запуск при старте
         window.addEventListener('DOMContentLoaded', () => {
             loadInstalledModels();
+            updateRagButtonUI();
+            loadRagDocuments();
         });
     </script>
 </body>
