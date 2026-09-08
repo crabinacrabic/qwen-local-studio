@@ -539,6 +539,172 @@ async function performWebSearch(query, maxResults = 5, deepFetch = true) {
     return results || [];
 }
 
+// ==========================================
+// Модуль проверки обновлений моделей Qwen
+// ==========================================
+
+let updateCheckCache = {
+    timestamp: 0,
+    data: null
+};
+
+function getLocalOllamaModels() {
+    return new Promise((resolve) => {
+        const req = http.get({
+            hostname: '127.0.0.1',
+            port: OLLAMA_PORT,
+            path: '/api/tags',
+            timeout: 5000
+        }, (res) => {
+            let data = '';
+            res.on('data', c => data += c);
+            res.on('end', () => {
+                try {
+                    const json = JSON.parse(data);
+                    resolve(json.models || []);
+                } catch (e) {
+                    resolve([]);
+                }
+            });
+        });
+        req.on('error', () => resolve([]));
+        req.on('timeout', () => { req.destroy(); resolve([]); });
+    });
+}
+
+function fetchOllamaQwenLibrary() {
+    return new Promise((resolve) => {
+        const req = https.get('https://ollama.com/search?q=qwen', {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+            },
+            timeout: 6000
+        }, res => {
+            let data = '';
+            res.on('data', c => data += c);
+            res.on('end', () => {
+                const found = [];
+                const matches = data.match(/href="\/library\/([^"]+)"/g) || [];
+                for (const m of matches) {
+                    const name = m.replace('href="/library/', '').replace('"', '').trim().toLowerCase();
+                    if (name.includes('qwen') && !found.includes(name)) {
+                        found.push(name);
+                    }
+                }
+                resolve(found);
+            });
+        });
+        req.on('error', () => resolve([]));
+        req.on('timeout', () => { req.destroy(); resolve([]); });
+    });
+}
+
+async function checkModelUpdates(forceRefresh = false) {
+    const now = Date.now();
+    if (!forceRefresh && updateCheckCache.data && (now - updateCheckCache.timestamp < 10 * 60 * 1000)) {
+        return updateCheckCache.data;
+    }
+
+    const installed = await getLocalOllamaModels();
+    const libraryFamilies = await fetchOllamaQwenLibrary();
+    const installedNames = installed.map(m => m.name.toLowerCase());
+    const updates = [];
+
+    // Правила поколенческих обновлений под RX 6600 (8 GB VRAM)
+    const upgradeRules = [
+        {
+            check: (name) => name.startsWith('qwen3:8b') || name.startsWith('qwen2.5:7b') || name.startsWith('qwen2.5:8b'),
+            targetFamily: 'qwen3.5',
+            targetTag: 'qwen3.5:9b',
+            title: 'Qwen3.5 9B (Новый флагман)',
+            sizeApprox: '~6.6 GB',
+            description: 'Новейшая архитектура: контекст 256K, глубокое мышление (<thought>), нативная мультимодальность. Заметно умнее первого поколения Qwen3 8B.',
+            vramFit: '🟢 Идеально для 8 GB VRAM'
+        },
+        {
+            check: (name) => name.startsWith('qwen3:4b') || name.startsWith('qwen2.5:3b'),
+            targetFamily: 'qwen3.5',
+            targetTag: 'qwen3.5:4b',
+            title: 'Qwen3.5 4B (Сверхбыстрая)',
+            sizeApprox: '~3.4 GB',
+            description: 'Свежая компактная модель: скорость 50+ токенов/сек, мультимодальность, идеально для повседневных задач.',
+            vramFit: '🟢 Занимает меньше половины VRAM'
+        },
+        {
+            check: (name) => name.startsWith('qwen3:0.6b') || name.startsWith('qwen3:1.7b'),
+            targetFamily: 'qwen3.5',
+            targetTag: 'qwen3.5:2b',
+            title: 'Qwen3.5 2B (Компактная)',
+            sizeApprox: '~1.8 GB',
+            description: 'Миниатюрная модель 2026 года нового поколения.',
+            vramFit: '🟢 Минимальная нагрузка'
+        },
+        {
+            check: (name) => name.startsWith('nomic-embed-text'),
+            targetFamily: 'qwen3-embedding',
+            targetTag: 'qwen3-embedding:0.6b',
+            title: 'Qwen3-Embedding 0.6B (RAG)',
+            sizeApprox: '~600 MB',
+            description: 'Официальная модель эмбеддингов Qwen для базы знаний: расширенный контекст 32K, идеальная семантика русского языка.',
+            vramFit: '🟢 Минимальный вес'
+        }
+    ];
+
+    for (const inst of installed) {
+        const instName = inst.name;
+        for (const rule of upgradeRules) {
+            if (rule.check(instName)) {
+                const familyAvailable = libraryFamilies.length === 0 || libraryFamilies.includes(rule.targetFamily);
+                const isAlreadyInstalled = installedNames.some(n => n === rule.targetTag || n.startsWith(rule.targetTag + ':'));
+
+                if (familyAvailable && !isAlreadyInstalled) {
+                    updates.push({
+                        oldModel: instName,
+                        oldSizeFormatted: inst.size ? `${(inst.size / 1024 / 1024 / 1024).toFixed(1)} GB` : '',
+                        newModel: rule.targetTag,
+                        newTitle: rule.title,
+                        newSize: rule.sizeApprox,
+                        description: rule.description,
+                        vramFit: rule.vramFit
+                    });
+                }
+            }
+        }
+    }
+
+    // Рекомендация Vision модели, если у пользователя нет ни одной мультимодальной
+    const hasVisionModel = installedNames.some(n => n.includes('-vl') || n.includes('vl:'));
+    if (!hasVisionModel && (libraryFamilies.length === 0 || libraryFamilies.includes('qwen3-vl'))) {
+        const isAlreadyInstalled = installedNames.some(n => n.startsWith('qwen3-vl:4b'));
+        if (!isAlreadyInstalled) {
+            updates.push({
+                oldModel: null,
+                oldSizeFormatted: null,
+                newModel: 'qwen3-vl:4b',
+                newTitle: 'Qwen3-VL 4B (Компьютерное зрение)',
+                newSize: '~3.5 GB',
+                description: 'Новая модель со зрением: распознавание изображений, графиков, скриншотов и документов.',
+                vramFit: '🟢 Идеально для 8 GB VRAM'
+            });
+        }
+    }
+
+    const result = {
+        status: 'ok',
+        installedCount: installed.length,
+        updatesCount: updates.length,
+        updates: updates,
+        checkedAt: getLocalTimestamp()
+    };
+
+    updateCheckCache = {
+        timestamp: now,
+        data: result
+    };
+
+    return result;
+}
+
 writeLog('INFO', '=== Запуск Qwen Local Server ===');
 ensureOllamaRunning();
 
@@ -871,7 +1037,23 @@ const server = http.createServer((req, res) => {
         return;
     }
 
-    // 9. Проксирование остальных запросов к Ollama (/api/chat, /api/tags, /api/pull, /api/delete и т.д.)
+    // 9. Модели: Проверка наличия новых поколений и обновлений в Ollama Library
+    if (req.url.startsWith('/api/models/check-updates') && req.method === 'GET') {
+        const forceRefresh = req.url.includes('force=1');
+        writeLog('INFO', `[ModelUpdates] Запрос проверки обновлений моделей (принудительно: ${forceRefresh ? 'да' : 'нет'})...`);
+        checkModelUpdates(forceRefresh).then(data => {
+            writeLog('INFO', `[ModelUpdates] Найдено обновлений: ${data.updatesCount} (установлено: ${data.installedCount})`);
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify(data));
+        }).catch(err => {
+            writeLog('ERROR', `[ModelUpdates] Ошибка проверки: ${err.message}`);
+            res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ error: err.message, updates: [] }));
+        });
+        return;
+    }
+
+    // 10. Проксирование остальных запросов к Ollama (/api/chat, /api/tags, /api/pull, /api/delete и т.д.)
     if (req.url.startsWith('/api/')) {
         writeLog('DEBUG', `Proxy ${req.method} ${req.url}`);
 

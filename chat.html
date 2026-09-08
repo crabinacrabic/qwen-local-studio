@@ -767,6 +767,208 @@
             font-size: 0.8rem;
             line-height: 1.4;
         }
+
+        /* Модальное окно обновлений моделей */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(4px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            padding: 16px;
+            animation: fadeIn 0.2s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .update-modal-dialog {
+            background: #161b22;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            width: 100%;
+            max-width: 680px;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.7);
+            overflow: hidden;
+            animation: modalScale 0.2s ease;
+        }
+
+        @keyframes modalScale {
+            from { transform: scale(0.95); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+
+        .update-modal-header {
+            padding: 16px 20px;
+            background: #1c2128;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .update-modal-title {
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: #58a6ff;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .update-modal-close {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 1.3rem;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 6px;
+            line-height: 1;
+        }
+
+        .update-modal-close:hover {
+            color: var(--text-primary);
+            background: rgba(255,255,255,0.1);
+        }
+
+        .update-modal-body {
+            padding: 18px 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .update-card {
+            background: #0f141c;
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 14px 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            transition: border-color 0.2s;
+        }
+
+        .update-card:hover {
+            border-color: #3b82f6;
+        }
+
+        .update-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .update-model-transition {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 700;
+            font-size: 0.95rem;
+        }
+
+        .badge-old-model {
+            background: rgba(139, 148, 158, 0.2);
+            color: #8b949e;
+            padding: 3px 8px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            text-decoration: line-through;
+        }
+
+        .badge-new-model {
+            background: rgba(56, 189, 248, 0.18);
+            color: #38bdf8;
+            border: 1px solid rgba(56, 189, 248, 0.4);
+            padding: 3px 8px;
+            border-radius: 6px;
+            font-size: 0.88rem;
+        }
+
+        .badge-vram {
+            background: rgba(46, 160, 67, 0.18);
+            color: #4ade80;
+            font-size: 0.76rem;
+            padding: 2px 7px;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+
+        .update-card-desc {
+            font-size: 0.86rem;
+            color: #cbd5e1;
+            line-height: 1.45;
+        }
+
+        .update-options-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            background: rgba(255, 255, 255, 0.02);
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            font-size: 0.84rem;
+        }
+
+        .update-option-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            user-select: none;
+            color: var(--text-primary);
+        }
+
+        .update-option-label input[type="radio"] {
+            cursor: pointer;
+            accent-color: #3b82f6;
+        }
+
+        .update-modal-footer {
+            padding: 14px 20px;
+            background: #1c2128;
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .btn-check-updates-header {
+            background: rgba(59, 130, 246, 0.12);
+            color: #60a5fa;
+            border: 1px solid rgba(59, 130, 246, 0.35);
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s;
+        }
+
+        .btn-check-updates-header:hover {
+            background: rgba(59, 130, 246, 0.25);
+        }
     </style>
 </head>
 <body>
@@ -805,12 +1007,12 @@
 
             <div class="quick-tags">
                 <span style="font-size:0.85rem; color: var(--text-secondary);">Быстрый выбор:</span>
-                <span class="tag-pill" onclick="setDlTag('qwen3:8b')">⭐ Qwen3 8B (Флагман 5.2 GB)</span>
-                <span class="tag-pill" onclick="setDlTag('qwen3:14b')">🔥 Qwen3 14B (Тяжелая 9.0 GB)</span>
+                <span class="tag-pill" onclick="setDlTag('qwen3.5:9b')">⭐ Qwen3.5 9B (Новый флагман 6.6 GB)</span>
+                <span class="tag-pill" onclick="setDlTag('qwen3.5:4b')">⚡ Qwen3.5 4B (Быстрая 3.4 GB)</span>
+                <span class="tag-pill" onclick="setDlTag('qwen3-vl:4b')">👁️ Qwen3-VL 4B (Зрение 3.5 GB)</span>
+                <span class="tag-pill" onclick="setDlTag('qwen3.8:27b')">🔥 Qwen3.8 27B (Тяжелая MoE 18 GB)</span>
+                <span class="tag-pill" onclick="setDlTag('qwen3-embedding:0.6b')">🔍 Qwen3-Embedding (RAG 0.6 GB)</span>
                 <span class="tag-pill" onclick="setDlTag('qwen2.5-coder:7b')">💻 Qwen 2.5 Coder 7B (Код 4.7 GB)</span>
-                <span class="tag-pill" onclick="setDlTag('qwen2.5-coder:14b')">🚀 Qwen 2.5 Coder 14B (Код 9.0 GB)</span>
-                <span class="tag-pill" onclick="setDlTag('qwen3:30b-a3b')">⚡ Qwen3 30B-A3B (MoE 18 GB)</span>
-                <span class="tag-pill" onclick="setDlTag('deepseek-r1:8b')">🧠 DeepSeek R1 8B (Мыслитель)</span>
             </div>
 
             <div id="progressBox" class="progress-box" style="display: none;">
@@ -824,8 +1026,54 @@
             </div>
 
             <div style="border-top: 1px solid var(--border-color); padding-top: 12px;">
-                <div class="panel-section-title">💾 Установленные модели на твоём ПК</div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <div class="panel-section-title" style="margin-bottom: 0;">💾 Установленные модели на твоём ПК</div>
+                    <button id="checkUpdatesManualBtn" class="btn-check-updates-header" title="Проверить наличие новых поколений Qwen в Ollama Library">
+                        <span>🔄 Проверить новые модели</span>
+                    </button>
+                </div>
                 <div id="installedModelsList" class="installed-models-list"></div>
+            </div>
+        </div>
+
+        <!-- Модальное окно автоматического обновления моделей -->
+        <div id="updateModal" class="modal-overlay" style="display: none;">
+            <div class="update-modal-dialog">
+                <div class="update-modal-header">
+                    <div class="update-modal-title">
+                        <span>🚀 Доступны новые поколения моделей Qwen!</span>
+                    </div>
+                    <button id="closeUpdateModalBtn" class="update-modal-close" title="Закрыть">&times;</button>
+                </div>
+                <div class="update-modal-body">
+                    <div style="font-size: 0.88rem; color: var(--text-secondary); line-height: 1.45;">
+                        В официальной библиотеке Ollama появились более совершенные версии ваших моделей. Вы можете обновить их в 1 клик с безопасным удалением старой версии (для экономии места) или оставить обе:
+                    </div>
+                    <div id="updateListContainer" style="display: flex; flex-direction: column; gap: 12px;">
+                        <!-- Карточки обновлений генерируются динамически -->
+                    </div>
+                    
+                    <!-- Прогресс выполнения обновлений -->
+                    <div id="updateProgressBox" style="display: none; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px;">
+                        <div style="display: flex; justify-content: space-between; font-size: 0.88rem; margin-bottom: 6px;">
+                            <span id="updateProgressStatusText" style="color: #60a5fa;">Скачивание модели...</span>
+                            <span id="updateProgressPercentText" style="color: #4ade80; font-weight: 700;">0%</span>
+                        </div>
+                        <div class="progress-bar-bg">
+                            <div id="updateProgressBarFill" class="progress-bar-fill"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="update-modal-footer">
+                    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.82rem; color: var(--text-secondary); cursor: pointer; user-select: none;">
+                        <input type="checkbox" id="autoCheckStartupCheckbox" checked style="accent-color: #3b82f6;">
+                        <span>Проверять новые модели при каждом запуске</span>
+                    </label>
+                    <div style="display: flex; gap: 10px;">
+                        <button id="remindLaterUpdateBtn" class="btn-manage" style="border-color: var(--border-color); color: var(--text-secondary);">Напомнить позже</button>
+                        <button id="applyUpdatesBtn" class="btn-download" style="padding: 8px 18px; font-size: 0.9rem;">Применить выбранное</button>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -922,6 +1170,22 @@
         // Элемент переключения Веб-поиска (Интернет)
         const toggleWebBtn = document.getElementById('toggleWebBtn');
         let webSearchEnabled = localStorage.getItem('web_search_enabled') === '1';
+
+        // Элементы модального окна обновления моделей
+        const updateModal = document.getElementById('updateModal');
+        const closeUpdateModalBtn = document.getElementById('closeUpdateModalBtn');
+        const remindLaterUpdateBtn = document.getElementById('remindLaterUpdateBtn');
+        const applyUpdatesBtn = document.getElementById('applyUpdatesBtn');
+        const updateListContainer = document.getElementById('updateListContainer');
+        const checkUpdatesManualBtn = document.getElementById('checkUpdatesManualBtn');
+        const autoCheckStartupCheckbox = document.getElementById('autoCheckStartupCheckbox');
+        const updateProgressBox = document.getElementById('updateProgressBox');
+        const updateProgressStatusText = document.getElementById('updateProgressStatusText');
+        const updateProgressPercentText = document.getElementById('updateProgressPercentText');
+        const updateProgressBarFill = document.getElementById('updateProgressBarFill');
+
+        let autoCheckUpdatesEnabled = localStorage.getItem('auto_check_updates') !== '0';
+        let currentAvailableUpdates = [];
 
         // Элементы RAG (Базы знаний)
         const toggleRagBtn = document.getElementById('toggleRagBtn');
@@ -1034,6 +1298,220 @@
         function setDlTag(name) {
             downloadInput.value = name;
         }
+
+        // ==========================================
+        // Автопроверка и обновление моделей Qwen
+        // ==========================================
+
+        autoCheckStartupCheckbox.checked = autoCheckUpdatesEnabled;
+        autoCheckStartupCheckbox.addEventListener('change', () => {
+            autoCheckUpdatesEnabled = autoCheckStartupCheckbox.checked;
+            localStorage.setItem('auto_check_updates', autoCheckUpdatesEnabled ? '1' : '0');
+        });
+
+        closeUpdateModalBtn.addEventListener('click', () => {
+            updateModal.style.display = 'none';
+        });
+
+        remindLaterUpdateBtn.addEventListener('click', () => {
+            updateModal.style.display = 'none';
+        });
+
+        checkUpdatesManualBtn.addEventListener('click', () => {
+            checkForModelUpdates(true);
+        });
+
+        async function checkForModelUpdates(manual = false) {
+            try {
+                if (manual) {
+                    checkUpdatesManualBtn.innerHTML = '<span>⏳ Идет поиск новинок...</span>';
+                }
+                logMessage('INFO', `[ModelUpdates] Запуск проверки обновлений (ручной: ${manual})...`);
+                const res = await fetch(`/api/models/check-updates?force=${manual ? 1 : 0}`);
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                const data = await res.json();
+
+                if (manual) {
+                    checkUpdatesManualBtn.innerHTML = '<span>🔄 Проверить новые модели</span>';
+                }
+
+                if (data.updates && data.updates.length > 0) {
+                    currentAvailableUpdates = data.updates;
+                    renderUpdateModal(data.updates);
+                    updateModal.style.display = 'flex';
+                } else if (manual) {
+                    showToast('✅ Все ваши модели Qwen актуальны!');
+                }
+            } catch (err) {
+                if (manual) {
+                    checkUpdatesManualBtn.innerHTML = '<span>🔄 Проверить новые модели</span>';
+                    showToast('Ошибка проверки обновлений: ' + err.message);
+                }
+                logMessage('WARN', `[ModelUpdates] Ошибка проверки: ${err.message}`);
+            }
+        }
+
+        function renderUpdateModal(updates) {
+            updateListContainer.innerHTML = '';
+            updateProgressBox.style.display = 'none';
+            applyUpdatesBtn.disabled = false;
+            applyUpdatesBtn.innerText = 'Применить выбранное';
+
+            updates.forEach((u, idx) => {
+                const card = document.createElement('div');
+                card.className = 'update-card';
+
+                const transitionHtml = u.oldModel ? `
+                    <div class="update-model-transition">
+                        <span class="badge-old-model">${escapeHtml(u.oldModel)}</span>
+                        <span style="color: #58a6ff;">➔</span>
+                        <span class="badge-new-model">${escapeHtml(u.newModel)}</span>
+                    </div>
+                ` : `
+                    <div class="update-model-transition">
+                        <span class="badge-new-model">✨ Новинка: ${escapeHtml(u.newModel)}</span>
+                    </div>
+                `;
+
+                card.innerHTML = `
+                    <div class="update-card-header">
+                        ${transitionHtml}
+                        <div style="display:flex; align-items:center; gap:6px;">
+                            <span style="font-size:0.8rem; color:var(--text-secondary); font-weight:600;">${escapeHtml(u.newSize)}</span>
+                            <span class="badge-vram">${escapeHtml(u.vramFit)}</span>
+                        </div>
+                    </div>
+                    <div style="font-weight:600; font-size:0.92rem; color:#e6edf3;">${escapeHtml(u.newTitle)}</div>
+                    <div class="update-card-desc">${escapeHtml(u.description)}</div>
+                    <div class="update-options-group">
+                        ${u.oldModel ? `
+                        <label class="update-option-label">
+                            <input type="radio" name="action_${idx}" value="replace" checked>
+                            <span><strong>Заменить:</strong> скачать <code>${escapeHtml(u.newModel)}</code> и безопасно удалить <code>${escapeHtml(u.oldModel)}</code> (освободит ${escapeHtml(u.oldSizeFormatted || 'место')})</span>
+                        </label>
+                        <label class="update-option-label">
+                            <input type="radio" name="action_${idx}" value="keep">
+                            <span><strong>Оставить обе:</strong> скачать <code>${escapeHtml(u.newModel)}</code>, сохранив <code>${escapeHtml(u.oldModel)}</code></span>
+                        </label>
+                        ` : `
+                        <label class="update-option-label">
+                            <input type="radio" name="action_${idx}" value="keep" checked>
+                            <span><strong>Скачать:</strong> установить новую модель <code>${escapeHtml(u.newModel)}</code></span>
+                        </label>
+                        `}
+                        <label class="update-option-label">
+                            <input type="radio" name="action_${idx}" value="skip">
+                            <span style="color: var(--text-secondary);">Пропустить эту модель</span>
+                        </label>
+                    </div>
+                `;
+                updateListContainer.appendChild(card);
+            });
+        }
+
+        applyUpdatesBtn.addEventListener('click', async () => {
+            const plan = [];
+            currentAvailableUpdates.forEach((u, idx) => {
+                const selectedRadio = document.querySelector(`input[name="action_${idx}"]:checked`);
+                const action = selectedRadio ? selectedRadio.value : 'skip';
+                if (action !== 'skip') {
+                    plan.push({
+                        oldModel: u.oldModel,
+                        newModel: u.newModel,
+                        action: action
+                    });
+                }
+            });
+
+            if (plan.length === 0) {
+                showToast('Выберите хотя бы одну модель для обновления');
+                updateModal.style.display = 'none';
+                return;
+            }
+
+            applyUpdatesBtn.disabled = true;
+            remindLaterUpdateBtn.disabled = true;
+            closeUpdateModalBtn.disabled = true;
+            updateProgressBox.style.display = 'block';
+
+            for (let i = 0; i < plan.length; i++) {
+                const item = plan[i];
+                updateProgressStatusText.innerText = `[${i + 1}/${plan.length}] Подготовка к скачиванию ${item.newModel}...`;
+                updateProgressPercentText.innerText = '0%';
+                updateProgressBarFill.style.width = '0%';
+
+                try {
+                    logMessage('INFO', `Запуск скачивания модели ${item.newModel} (действие: ${item.action})...`);
+                    const res = await fetch('/api/pull', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name: item.newModel, stream: true })
+                    });
+
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+
+                    const reader = res.body.getReader();
+                    const decoder = new TextDecoder();
+
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+                        const chunk = decoder.decode(value, { stream: true });
+                        const lines = chunk.split('\n');
+
+                        for (const line of lines) {
+                            if (!line.trim()) continue;
+                            try {
+                                const p = JSON.parse(line);
+                                if (p.status) {
+                                    updateProgressStatusText.innerText = `[${i + 1}/${plan.length}] ${item.newModel}: ${p.status}`;
+                                }
+                                if (p.total && p.completed) {
+                                    const pct = Math.round((p.completed / p.total) * 100);
+                                    updateProgressPercentText.innerText = pct + '%';
+                                    updateProgressBarFill.style.width = pct + '%';
+                                }
+                            } catch (e) {}
+                        }
+                    }
+
+                    logMessage('INFO', `Модель ${item.newModel} успешно загружена.`);
+
+                    // Безопасное удаление старой модели после 100% загрузки новой
+                    if (item.action === 'replace' && item.oldModel) {
+                        updateProgressStatusText.innerText = `Удаление старой версии ${item.oldModel}...`;
+                        logMessage('INFO', `Удаление старой модели ${item.oldModel} после успешного обновления...`);
+                        try {
+                            await fetch('/api/delete', {
+                                method: 'DELETE',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ name: item.oldModel })
+                            });
+                            logMessage('INFO', `Старая модель ${item.oldModel} успешно удалена.`);
+                        } catch (delErr) {
+                            logMessage('WARN', `Не удалось удалить старую модель ${item.oldModel}: ${delErr.message}`);
+                        }
+                    }
+
+                } catch (pullErr) {
+                    logMessage('ERROR', `Сбой загрузки ${item.newModel}: ${pullErr.message}`);
+                    showToast(`Ошибка загрузки ${item.newModel}: ${pullErr.message}`);
+                }
+            }
+
+            updateProgressStatusText.innerText = 'Обновление списка моделей...';
+            await loadInstalledModels();
+
+            if (plan[0] && modelSelect.value === plan[0].oldModel) {
+                modelSelect.value = plan[0].newModel;
+            }
+
+            showToast('🎉 Обновление моделей успешно завершено!');
+            updateModal.style.display = 'none';
+            applyUpdatesBtn.disabled = false;
+            remindLaterUpdateBtn.disabled = false;
+            closeUpdateModalBtn.disabled = false;
+        });
 
         // Динамическая загрузка списка установленных моделей из Ollama с автоповтором
         async function loadInstalledModels(retryCount = 0) {
@@ -1875,6 +2353,13 @@ ${contextBlocks.join('\n\n')}
             updateRagButtonUI();
             updateWebButtonUI();
             loadRagDocuments();
+
+            // Автопроверка новинок в Ollama Library при старте
+            if (autoCheckUpdatesEnabled) {
+                setTimeout(() => {
+                    checkForModelUpdates(false);
+                }, 1200);
+            }
         });
     </script>
 </body>
