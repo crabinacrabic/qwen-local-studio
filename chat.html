@@ -2301,13 +2301,15 @@ ${contextBlocks.join('\n\n')}
                 const decoder = new TextDecoder();
                 let fullThinking = '';
                 let fullAnswer = '';
+                let streamBuffer = '';
 
                 while (true) {
                     const { done, value } = await reader.read();
                     if (done) break;
 
-                    const chunk = decoder.decode(value, { stream: true });
-                    const lines = chunk.split('\n');
+                    streamBuffer += decoder.decode(value, { stream: true });
+                    const lines = streamBuffer.split('\n');
+                    streamBuffer = lines.pop(); // Оставляем незавершенную строку в буфере
 
                     for (const line of lines) {
                         if (!line.trim()) continue;
@@ -2318,6 +2320,9 @@ ${contextBlocks.join('\n\n')}
                                 assistantUi.thinkContainer.style.display = 'block';
                                 fullThinking += parsed.message.thinking;
                                 assistantUi.thinkContent.innerText = fullThinking;
+                                if (!fullAnswer) {
+                                    assistantUi.bubbleDiv.innerText = '🧠 Формирую рассуждения...';
+                                }
                                 chatMessages.scrollTop = chatMessages.scrollHeight;
                             }
 
@@ -2330,8 +2335,32 @@ ${contextBlocks.join('\n\n')}
                     }
                 }
 
+                // Дообрабатываем остаток из буфера, если он остался
+                if (streamBuffer.trim()) {
+                    try {
+                        const parsed = JSON.parse(streamBuffer);
+                        if (parsed.message && parsed.message.thinking) {
+                            fullThinking += parsed.message.thinking;
+                            assistantUi.thinkContent.innerText = fullThinking;
+                        }
+                        if (parsed.message && parsed.message.content) {
+                            fullAnswer += parsed.message.content;
+                            assistantUi.bubbleDiv.innerText = fullAnswer;
+                        }
+                    } catch (err) {}
+                }
+
+                // Если модель выдала только мысли без отдельного ответа
+                if (!fullAnswer.trim()) {
+                    if (fullThinking.trim()) {
+                        assistantUi.bubbleDiv.innerText = fullThinking;
+                    } else {
+                        assistantUi.bubbleDiv.innerText = 'Модель завершила генерацию, но ответ пуст. Попробуйте повторить запрос.';
+                    }
+                }
+
                 assistantUi.thinkToggle.innerHTML = `<span>💭 Рассуждения (нажми, чтобы скрыть/показать)</span>`;
-                chatHistory.push({ role: 'assistant', content: fullAnswer });
+                chatHistory.push({ role: 'assistant', content: fullAnswer || fullThinking });
                 logMessage('INFO', `Ответ от [${selectedModel}] успешно получен.`);
 
             } catch (error) {
