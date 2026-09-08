@@ -1,6 +1,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const { exec, spawn } = require('child_process');
 
 const PORT = 3000;
 const OLLAMA_PORT = 11434;
@@ -24,7 +25,31 @@ function writeLog(level, message) {
     }
 }
 
+// Автоматический запуск Ollama, если она не запущена
+function ensureOllamaRunning() {
+    const ollamaPath = path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Ollama', 'ollama.exe');
+    
+    const checkReq = http.get({ hostname: '127.0.0.1', port: OLLAMA_PORT, path: '/api/tags' }, (res) => {
+        writeLog('INFO', 'Служба Ollama активна и отвечает.');
+    });
+
+    checkReq.on('error', () => {
+        writeLog('WARN', 'Служба Ollama не была активна после включения ПК. Запускаем автоматически...');
+        try {
+            const child = spawn(ollamaPath, ['serve'], {
+                detached: true,
+                stdio: 'ignore'
+            });
+            child.unref();
+            writeLog('INFO', 'Ollama успешно запущена в фоне.');
+        } catch (err) {
+            writeLog('ERROR', 'Не удалось автоматически запустить Ollama: ' + err.message);
+        }
+    });
+}
+
 writeLog('INFO', '=== Запуск Qwen Local Server ===');
+ensureOllamaRunning();
 
 const server = http.createServer((req, res) => {
     // Логирование событий от фронтенда
@@ -62,15 +87,19 @@ const server = http.createServer((req, res) => {
 
         proxyReq.on('error', (err) => {
             writeLog('ERROR', `Ошибка связи с Ollama (${req.url}): ${err.message}`);
+            // Если соединение отклонено, пробуем еще раз пнуть запуск Ollama
+            if (err.code === 'ECONNREFUSED') {
+                ensureOllamaRunning();
+            }
             res.writeHead(502, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: 'Не удалось связаться с Ollama: ' + err.message }));
+            res.end(JSON.stringify({ error: 'Служба Ollama еще запускается. Пожалуйста, обновите страницу через 3 секунды.' }));
         });
 
         req.pipe(proxyReq);
         return;
     }
 
-    // Отдача веб-страницы чата с запретом кэширования (чтобы F5 всегда отдавал свежий файл!)
+    // Отдача веб-страницы чата с запретом кэширования
     const filePath = path.join(__dirname, 'chat.html');
     fs.readFile(filePath, (err, data) => {
         if (err) {
@@ -92,6 +121,5 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, '127.0.0.1', () => {
     writeLog('INFO', `Сервер чата запущен и слушает http://localhost:${PORT}`);
     writeLog('INFO', `Лог-файл пишется в ${LOG_FILE}`);
-    const { exec } = require('child_process');
     exec(`start http://localhost:${PORT}`);
 });

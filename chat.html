@@ -682,8 +682,8 @@
             downloadInput.value = name;
         }
 
-        // Динамическая загрузка списка установленных моделей из Ollama
-        async function loadInstalledModels() {
+        // Динамическая загрузка списка установленных моделей из Ollama с автоповтором
+        async function loadInstalledModels(retryCount = 0) {
             try {
                 logMessage('INFO', 'Запрос списка установленных моделей (/api/tags)...');
                 const res = await fetch('/api/tags', { cache: 'no-store' });
@@ -725,8 +725,14 @@
                 renderCards();
 
             } catch (err) {
-                logMessage('ERROR', 'Ошибка загрузки моделей: ' + err.message);
-                showToast('Ошибка загрузки моделей: ' + err.message);
+                logMessage('WARN', `Ошибка загрузки моделей (попытка ${retryCount + 1}/4): ${err.message}`);
+                if (retryCount < 3) {
+                    showToast('Служба Ollama запускается в фоне, подождите 2 сек...');
+                    setTimeout(() => loadInstalledModels(retryCount + 1), 2000);
+                } else {
+                    logMessage('ERROR', 'Не удалось подключиться к Ollama после нескольких попыток: ' + err.message);
+                    showToast('Ошибка: не удалось связаться с Ollama. Проверьте запуск службы.');
+                }
             }
         }
 
