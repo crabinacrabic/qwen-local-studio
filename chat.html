@@ -661,6 +661,112 @@
             font-size: 0.76rem;
             font-weight: 600;
         }
+
+        /* Стили для кнопки Веб-поиска (Интернет) */
+        .btn-web-toggle {
+            background: var(--chat-bg);
+            color: var(--text-secondary);
+            border: 1px solid var(--border-color);
+            padding: 8px 14px;
+            border-radius: 8px;
+            font-size: 0.88rem;
+            cursor: pointer;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s ease;
+            user-select: none;
+        }
+
+        .btn-web-toggle:hover {
+            border-color: #38bdf8;
+            color: #38bdf8;
+        }
+
+        .btn-web-toggle.active {
+            background: rgba(14, 165, 233, 0.18);
+            color: #38bdf8;
+            border-color: #0ea5e9;
+            box-shadow: 0 0 12px rgba(14, 165, 233, 0.4);
+        }
+
+        /* Стили для блока веб-источников */
+        .web-source-box {
+            background: rgba(14, 165, 233, 0.08);
+            border: 1px solid rgba(14, 165, 233, 0.3);
+            border-radius: 8px;
+            padding: 10px 14px;
+            margin-bottom: 12px;
+            font-size: 0.86rem;
+        }
+
+        .web-source-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+            font-weight: 600;
+            color: #38bdf8;
+            user-select: none;
+        }
+
+        .web-source-content {
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid rgba(14, 165, 233, 0.2);
+            font-size: 0.83rem;
+            max-height: 250px;
+            overflow-y: auto;
+            line-height: 1.5;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .web-source-content.hidden {
+            display: none;
+        }
+
+        .web-source-item {
+            padding: 8px 10px;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 6px;
+            border-left: 3px solid #0ea5e9;
+        }
+
+        .web-source-item-title {
+            font-weight: 600;
+            color: #e6edf3;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: color 0.2s;
+        }
+
+        .web-source-item-title:hover {
+            color: #38bdf8;
+            text-decoration: underline;
+        }
+
+        .web-source-item-domain {
+            display: inline-block;
+            font-size: 0.72rem;
+            background: rgba(14, 165, 233, 0.2);
+            color: #7dd3fc;
+            padding: 1px 6px;
+            border-radius: 4px;
+            margin-left: 6px;
+            font-weight: 500;
+        }
+
+        .web-source-item-snippet {
+            margin-top: 4px;
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            line-height: 1.4;
+        }
     </style>
 </head>
 <body>
@@ -671,6 +777,9 @@
                 <span>Qwen AI Studio (Локально)</span>
             </div>
             <div class="header-controls">
+                <button id="toggleWebBtn" class="btn-web-toggle" title="Включить / отключить поиск в живом интернете">
+                    <span>🌐 Интернет: ВЫКЛ</span>
+                </button>
                 <button id="toggleRagBtn" class="btn-rag-toggle" title="Включить / отключить поиск по личным документам (RAG)">
                     <span>📚 RAG: ВЫКЛ</span>
                 </button>
@@ -810,6 +919,10 @@
         const installedModelsList = document.getElementById('installedModelsList');
         const toastNotify = document.getElementById('toastNotify');
 
+        // Элемент переключения Веб-поиска (Интернет)
+        const toggleWebBtn = document.getElementById('toggleWebBtn');
+        let webSearchEnabled = localStorage.getItem('web_search_enabled') === '1';
+
         // Элементы RAG (Базы знаний)
         const toggleRagBtn = document.getElementById('toggleRagBtn');
         const toggleRagPanelBtn = document.getElementById('toggleRagPanelBtn');
@@ -895,6 +1008,27 @@
             updateRagButtonUI();
             logMessage('INFO', `RAG переключен в состояние: ${ragEnabled ? 'ВКЛ' : 'ВЫКЛ'}`);
             showToast(ragEnabled ? '📚 База знаний (RAG) ВКЛЮЧЕНА' : '📚 База знаний (RAG) ВЫКЛЮЧЕНА');
+        });
+
+        // Обновление состояния кнопки Веб-поиска (Интернет)
+        function updateWebButtonUI() {
+            if (webSearchEnabled) {
+                toggleWebBtn.classList.add('active');
+                toggleWebBtn.innerHTML = '<span>🌐 Интернет: ВКЛ</span>';
+                toggleWebBtn.title = 'Поиск в живом интернете ВКЛЮЧЕН (нажмите, чтобы выключить)';
+            } else {
+                toggleWebBtn.classList.remove('active');
+                toggleWebBtn.innerHTML = '<span>🌐 Интернет: ВЫКЛ</span>';
+                toggleWebBtn.title = 'Поиск в живом интернете ВЫКЛЮЧЕН (нажмите, чтобы включить)';
+            }
+        }
+
+        toggleWebBtn.addEventListener('click', () => {
+            webSearchEnabled = !webSearchEnabled;
+            localStorage.setItem('web_search_enabled', webSearchEnabled ? '1' : '0');
+            updateWebButtonUI();
+            logMessage('INFO', `Интернет-поиск переключен в состояние: ${webSearchEnabled ? 'ВКЛ' : 'ВЫКЛ'}`);
+            showToast(webSearchEnabled ? '🌐 Поиск в интернете ВКЛЮЧЕН' : '🌐 Поиск в интернете ВЫКЛЮЧЕН');
         });
 
         function setDlTag(name) {
@@ -1371,12 +1505,14 @@
             }
         }
 
-        // Отображение цитат источников в сообщении ассистента
+        // Отображение цитат источников базы знаний (RAG)
         function renderRagSources(container, sources) {
             if (!sources || sources.length === 0) return;
 
-            container.innerHTML = '';
             container.style.display = 'block';
+            const existingBox = container.querySelector('.rag-source-box');
+            if (existingBox) existingBox.remove();
+
             const total = sources.length;
             const maxScore = Math.round(sources[0].score * 100);
 
@@ -1387,7 +1523,7 @@
             header.className = 'rag-source-header';
             header.innerHTML = `
                 <span style="display:flex; align-items:center; gap:6px;">
-                    <span>📚 Использовано источников: <strong>${total}</strong> (совпадение до ${maxScore}%)</span>
+                    <span>📚 Документы из базы знаний: <strong>${total}</strong> (совпадение до ${maxScore}%)</span>
                 </span>
                 <span class="rag-toggle-arrow" style="font-size:0.8rem; color:#93c5fd;">▼ Показать цитаты</span>
             `;
@@ -1414,6 +1550,62 @@
             header.onclick = () => {
                 const isHidden = content.classList.toggle('hidden');
                 header.querySelector('.rag-toggle-arrow').innerText = isHidden ? '▼ Показать цитаты' : '▲ Скрыть цитаты';
+            };
+
+            box.appendChild(header);
+            box.appendChild(content);
+            container.appendChild(box);
+        }
+
+        // Отображение цитат веб-источников (Интернет)
+        function renderWebSources(container, results) {
+            if (!results || results.length === 0) return;
+
+            container.style.display = 'block';
+            const existingBox = container.querySelector('.web-source-box');
+            if (existingBox) existingBox.remove();
+
+            const box = document.createElement('div');
+            box.className = 'web-source-box';
+
+            const header = document.createElement('div');
+            header.className = 'web-source-header';
+            header.innerHTML = `
+                <span style="display:flex; align-items:center; gap:6px;">
+                    <span>🌐 Найдено в интернете: <strong>${results.length}</strong> источников</span>
+                </span>
+                <span class="web-toggle-arrow" style="font-size:0.8rem; color:#38bdf8;">▼ Показать ссылки</span>
+            `;
+
+            const content = document.createElement('div');
+            content.className = 'web-source-content hidden';
+
+            results.forEach((item, idx) => {
+                let domain = '';
+                try {
+                    domain = new URL(item.url).hostname.replace(/^www\./, '');
+                } catch (e) {
+                    domain = 'веб-сайт';
+                }
+
+                const sourceItem = document.createElement('div');
+                sourceItem.className = 'web-source-item';
+                sourceItem.innerHTML = `
+                    <div>
+                        <a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer" class="web-source-item-title">
+                            <span>[${idx + 1}] ${escapeHtml(item.title || item.url)}</span>
+                            <span style="font-size:0.75rem;">↗</span>
+                        </a>
+                        <span class="web-source-item-domain">${escapeHtml(domain)}</span>
+                    </div>
+                    ${item.snippet ? `<div class="web-source-item-snippet">${escapeHtml(item.snippet)}</div>` : ''}
+                `;
+                content.appendChild(sourceItem);
+            });
+
+            header.onclick = () => {
+                const isHidden = content.classList.toggle('hidden');
+                header.querySelector('.web-toggle-arrow').innerText = isHidden ? '▼ Показать ссылки' : '▲ Скрыть ссылки';
             };
 
             box.appendChild(header);
@@ -1492,10 +1684,65 @@
 
             const assistantUi = createAssistantMessage(selectedModel);
 
-            // RAG: Семантический поиск по базе знаний, если RAG включен
+            // 1. Поиск в интернете (Web Search) или прямое чтение ссылки (Web Fetch)
             let ragSources = [];
+            let webSources = [];
             let messagesForOllama = [...chatHistory];
 
+            const urlMatches = text.match(/https?:\/\/[^\s]+/g);
+            if (webSearchEnabled || urlMatches) {
+                if (urlMatches && urlMatches.length > 0) {
+                    assistantUi.bubbleDiv.innerText = '🌐 Чтение веб-страницы по ссылке...';
+                    try {
+                        const fetchRes = await fetch('/api/web/fetch', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ url: urlMatches[0], maxChars: 2500 })
+                        });
+                        if (fetchRes.ok) {
+                            const fetchData = await fetchRes.json();
+                            if (fetchData.text) {
+                                webSources = [{
+                                    title: urlMatches[0],
+                                    url: urlMatches[0],
+                                    snippet: fetchData.text.substring(0, 300) + '...',
+                                    pageContent: fetchData.text
+                                }];
+                                renderWebSources(assistantUi.sourcesContainer, webSources);
+                                logMessage('INFO', `[WebFetch] Страница успешно прочитана: ${urlMatches[0]}`);
+                            }
+                        }
+                    } catch (fetchErr) {
+                        logMessage('WARN', `[WebFetch] Ошибка чтения URL: ${fetchErr.message}`);
+                    }
+                } else if (webSearchEnabled) {
+                    let cleanQuery = text
+                        .replace(/^(найди|поищи|погугли|найди в интернете|поиск в сети|поищи в интернете|найди в сети|гугл)\s*(пожалуйста)?\s*[:,]?\s*/i, '')
+                        .trim();
+                    if (!cleanQuery) cleanQuery = text;
+
+                    assistantUi.bubbleDiv.innerText = `🌐 Ищу в интернете: "${cleanQuery.substring(0, 35)}..."`;
+                    try {
+                        const searchRes = await fetch('/api/web/search', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ query: cleanQuery, maxResults: 5, deepFetch: true })
+                        });
+                        if (searchRes.ok) {
+                            const searchData = await searchRes.json();
+                            if (searchData.results && searchData.results.length > 0) {
+                                webSources = searchData.results;
+                                renderWebSources(assistantUi.sourcesContainer, webSources);
+                                logMessage('INFO', `[WebSearch] Найдено ${webSources.length} веб-источников для "${cleanQuery}".`);
+                            }
+                        }
+                    } catch (webErr) {
+                        logMessage('WARN', `[WebSearch] Ошибка поиска: ${webErr.message}`);
+                    }
+                }
+            }
+
+            // 2. RAG: Семантический поиск по локальной базе знаний
             if (ragEnabled) {
                 assistantUi.bubbleDiv.innerText = '🔍 Поиск в локальной базе знаний...';
                 try {
@@ -1515,20 +1762,41 @@
                 } catch (ragErr) {
                     logMessage('WARN', `[RAG] Ошибка поиска: ${ragErr.message}`);
                 }
-                assistantUi.bubbleDiv.innerText = 'Думаю...';
             }
 
-            // Если найдены источники, внедряем их в системный контекст модели
-            if (ragSources.length > 0) {
-                const contextStr = ragSources.map((s, idx) => `--- Фрагмент ${idx + 1} (Файл: ${s.filename}, совпадение ${Math.round(s.score * 100)}%) ---\n${s.text}`).join('\n\n');
+            assistantUi.bubbleDiv.innerText = 'Думаю...';
 
-                const augmentedPrompt = `Ты — полезный ИИ-ассистент с доступом к личным документам пользователя. Отвечай всегда на русском языке.
-Ниже предоставлен контекст из документов пользователя, найденный по его запросу:
-=== НАЧАЛО КОНТЕКСТА ИЗ ДОКУМЕНТОВ ===
-${contextStr}
-=== КОНЕЦ КОНТЕКСТА ИЗ ДОКУМЕНТОВ ===
+            // 3. Если найдены источники (Интернет или RAG), внедряем их в системный контекст модели
+            if (ragSources.length > 0 || webSources.length > 0) {
+                const today = new Date().toISOString().split('T')[0];
+                const contextBlocks = [];
 
-Используй этот контекст, чтобы максимально точно и полно ответить на вопрос. Если в документах нет нужной информации, ответь на основе своих общих знаний, но явно предупреди пользователя, что в его документах этого нет.`;
+                if (webSources.length > 0) {
+                    const webText = webSources.map((s, idx) => {
+                        const content = s.pageContent ? s.pageContent : s.snippet;
+                        return `[${idx + 1}] Заголовок: ${s.title}\n    URL: ${s.url}\n    Содержимое: ${content}`;
+                    }).join('\n\n');
+                    contextBlocks.push(`=== АКТУАЛЬНЫЕ РЕЗУЛЬТАТЫ ПОИСКА В ИНТЕРНЕТЕ (Текущая дата: ${today}) ===\n${webText}\n=== КОНЕЦ РЕЗУЛЬТАТОВ ПОИСКА ===`);
+                }
+
+                if (ragSources.length > 0) {
+                    const ragText = ragSources.map((s, idx) => 
+                        `--- Фрагмент ${idx + 1} (Файл: ${s.filename}, совпадение ${Math.round(s.score * 100)}%) ---\n${s.text}`
+                    ).join('\n\n');
+                    contextBlocks.push(`=== КОНТЕКСТ ИЗ ЛИЧНЫХ ДОКУМЕНТОВ ПОЛЬЗОВАТЕЛЯ ===\n${ragText}\n=== КОНЕЦ КОНТЕКСТА ИЗ ДОКУМЕНТОВ ===`);
+                }
+
+                const augmentedPrompt = `Ты — полезный и умный ИИ-ассистент с доступом к актуальным данным из интернета и личным материалам пользователя. Всегда отвечай на русском языке.
+Сегодняшняя дата: ${today}.
+
+Ниже предоставлена справочная информация, найденная по запросу пользователя:
+${contextBlocks.join('\n\n')}
+
+Инструкции по формированию ответа:
+1. Используй актуальную информацию из предоставленного выше контекста.
+2. При цитировании фактов из интернета делай сноски с номерами источников [1], [2] и т.д.
+3. Отвечай максимально точно, емко и структурированно, без домыслов.
+4. Если в источниках нет ответа на вопрос, честно предупреди об этом и ответь на основе своих общих знаний.`;
 
                 messagesForOllama = [
                     { role: 'system', content: augmentedPrompt },
@@ -1605,6 +1873,7 @@ ${contextStr}
         window.addEventListener('DOMContentLoaded', () => {
             loadInstalledModels();
             updateRagButtonUI();
+            updateWebButtonUI();
             loadRagDocuments();
         });
     </script>

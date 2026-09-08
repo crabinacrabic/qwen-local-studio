@@ -1,4 +1,6 @@
 const http = require('http');
+const https = require('https');
+const { URL } = require('url');
 const fs = require('fs');
 const path = require('path');
 const { exec, spawn, execSync } = require('child_process');
@@ -264,6 +266,277 @@ function readJsonBody(req, cb) {
         }
     });
     req.on('error', cb);
+}
+
+// ==========================================
+// Web Search & Fetch (Выход в интернет)
+// ==========================================
+
+function unescapeHtml(html) {
+    if (!html) return '';
+    return html
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&#x27;/g, "'")
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&#(\d+);/g, (match, dec) => {
+            try { return String.fromCharCode(dec); } catch(e) { return ''; }
+        });
+}
+
+// Загрузка и очистка содержимого веб-страницы по URL
+function fetchPageContent(targetUrl, maxChars = 2000, maxRedirects = 3) {
+    return new Promise((resolve) => {
+        if (maxRedirects <= 0) return resolve('');
+        try {
+            const parsedUrl = new URL(targetUrl);
+            if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+                return resolve('');
+            }
+            const pathname = parsedUrl.pathname.toLowerCase();
+            if (pathname.match(/\.(pdf|zip|rar|7z|exe|dmg|iso|mp3|mp4|avi|mkv|jpg|jpeg|png|gif|webp)$/)) {
+                return resolve('');
+            }
+
+            const client = parsedUrl.protocol === 'https:' ? https : http;
+            const options = {
+                hostname: parsedUrl.hostname,
+                port: parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80),
+                path: parsedUrl.pathname + parsedUrl.search,
+                method: 'GET',
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.8',
+                    'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7'
+                },
+                timeout: 7000
+            };
+
+            const req = client.get(options, (res) => {
+                if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+                    try {
+                        const redirectUrl = new URL(res.headers.location, targetUrl).href;
+                        return fetchPageContent(redirectUrl, maxChars, maxRedirects - 1).then(resolve);
+                    } catch (e) {
+                        return resolve('');
+                    }
+                }
+
+                if (res.statusCode !== 200) {
+                    return resolve('');
+                }
+
+                let raw = '';
+                res.on('data', chunk => {
+                    raw += chunk;
+                    if (raw.length > 500 * 1024) {
+                        req.destroy();
+                    }
+                });
+
+                res.on('end', () => {
+                    try {
+                        let text = raw
+                            .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, ' ')
+                            .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, ' ')
+                            .replace(/<header\b[^<]*(?:(?!<\/header>)<[^<]*)*<\/header>/gi, ' ')
+                            .replace(/<footer\b[^<]*(?:(?!<\/footer>)<[^<]*)*<\/footer>/gi, ' ')
+                            .replace(/<nav\b[^<]*(?:(?!<\/nav>)<[^<]*)*<\/nav>/gi, ' ')
+                            .replace(/<aside\b[^<]*(?:(?!<\/aside>)<[^<]*)*<\/aside>/gi, ' ')
+                            .replace(/<svg\b[^<]*(?:(?!<\/svg>)<[^<]*)*<\/svg>/gi, ' ')
+                            .replace(/<noscript\b[^<]*(?:(?!<\/noscript>)<[^<]*)*<\/noscript>/gi, ' ')
+                            .replace(/<[^>]+>/g, ' ')
+                            .replace(/\s+/g, ' ');
+                        text = unescapeHtml(text).trim();
+                        if (text.length > maxChars) {
+                            text = text.substring(0, maxChars) + '...';
+                        }
+                        resolve(text);
+                    } catch (e) {
+                        resolve('');
+                    }
+                });
+            });
+
+            req.on('error', () => resolve(''));
+            req.on('timeout', () => {
+                req.destroy();
+                resolve('');
+            });
+        } catch (e) {
+            resolve('');
+        }
+    });
+}
+
+// Поиск через DuckDuckGo HTML
+function searchDuckDuckGo(query, maxResults = 5) {
+    return new Promise((resolve, reject) => {
+        const postData = 'q=' + encodeURIComponent(query);
+        const options = {
+            hostname: 'html.duckduckgo.com',
+            port: 443,
+            path: '/html/',
+            method: 'POST',
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Content-Length': Buffer.byteLength(postData)
+            },
+            timeout: 10000
+        };
+
+        const req = https.request(options, (res) => {
+            let html = '';
+            res.on('data', chunk => html += chunk);
+            res.on('end', () => {
+                try {
+                    const results = [];
+                    const resultBlocks = html.split(/class="[^"]*result\s+results_links[^"]*"/);
+                    for (let i = 1; i < resultBlocks.length && results.length < maxResults; i++) {
+                        const block = resultBlocks[i];
+                        
+                        const urlMatch = block.match(/<a[^>]+class="result__url"[^>]+href="([^"]+)"[^>]*>/) ||
+                                         block.match(/<a[^>]+class="result__snippet"[^>]+href="([^"]+)"/) ||
+                                         block.match(/<h2[^>]*>[\s\S]*?<a[^>]+href="([^"]+)"[^>]*>/);
+                        
+                        let url = '';
+                        if (urlMatch) {
+                            url = urlMatch[1];
+                            if (url.includes('uddg=')) {
+                                const uddgMatch = url.match(/uddg=([^&]+)/);
+                                if (uddgMatch) {
+                                    try { url = decodeURIComponent(uddgMatch[1]); } catch(e){}
+                                }
+                            }
+                        }
+
+                        let title = '';
+                        const h2Match = block.match(/<h2[^>]*class="result__title"[^>]*>([\s\S]*?)<\/h2>/);
+                        if (h2Match) {
+                            title = unescapeHtml(h2Match[1].replace(/<[^>]+>/g, '')).trim();
+                        }
+
+                        let snippet = '';
+                        const snippetMatch = block.match(/class="result__snippet"[^>]*>([\s\S]*?)<\/a>/);
+                        if (snippetMatch) {
+                            snippet = unescapeHtml(snippetMatch[1].replace(/<[^>]+>/g, '')).trim();
+                        }
+
+                        if (title && url) {
+                            results.push({ title, url, snippet });
+                        }
+                    }
+                    resolve(results);
+                } catch (parseErr) {
+                    reject(new Error('Ошибка парсинга выдачи DDG: ' + parseErr.message));
+                }
+            });
+        });
+
+        req.on('error', (err) => reject(new Error('Сетевая ошибка DDG: ' + err.message)));
+        req.on('timeout', () => {
+            req.destroy();
+            reject(new Error('Таймаут поиска DuckDuckGo'));
+        });
+
+        req.write(postData);
+        req.end();
+    });
+}
+
+// Резервный поиск через DuckDuckGo Lite
+function searchDuckDuckGoLite(query, maxResults = 5) {
+    return new Promise((resolve) => {
+        const postData = 'q=' + encodeURIComponent(query);
+        const req = https.request({
+            hostname: 'lite.duckduckgo.com',
+            port: 443,
+            path: '/lite/',
+            method: 'POST',
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Content-Length': Buffer.byteLength(postData)
+            },
+            timeout: 8000
+        }, (res) => {
+            let html = '';
+            res.on('data', chunk => html += chunk);
+            res.on('end', () => {
+                try {
+                    const results = [];
+                    const linkMatches = [...html.matchAll(/<a[^>]+class=['"]result-link['"][^>]+href=['"]([^'"]+)['"][^>]*>([\s\S]*?)<\/a>/g)];
+                    const snippetMatches = [...html.matchAll(/<td[^>]+class=['"]result-snippet['"][^>]*>([\s\S]*?)<\/td>/g)];
+
+                    for (let i = 0; i < linkMatches.length && results.length < maxResults; i++) {
+                        let url = linkMatches[i][1];
+                        if (url.includes('uddg=')) {
+                            const uddgMatch = url.match(/uddg=([^&]+)/);
+                            if (uddgMatch) {
+                                try { url = decodeURIComponent(uddgMatch[1]); } catch(e){}
+                            }
+                        }
+                        const title = unescapeHtml(linkMatches[i][2].replace(/<[^>]+>/g, '')).trim();
+                        const snippet = snippetMatches[i] ? unescapeHtml(snippetMatches[i][1].replace(/<[^>]+>/g, '')).trim() : '';
+                        if (title && url) {
+                            results.push({ title, url, snippet });
+                        }
+                    }
+                    resolve(results);
+                } catch (e) {
+                    resolve([]);
+                }
+            });
+        });
+        req.on('error', () => resolve([]));
+        req.on('timeout', () => {
+            req.destroy();
+            resolve([]);
+        });
+        req.write(postData);
+        req.end();
+    });
+}
+
+// Комплексный поиск с автопереключением и глубоким чтением страниц
+async function performWebSearch(query, maxResults = 5, deepFetch = true) {
+    let results = [];
+    try {
+        results = await searchDuckDuckGo(query, maxResults);
+    } catch (e) {
+        writeLog('WARN', `[WebSearch] Ошибка DDG HTML: ${e.message}`);
+    }
+
+    if (!results || results.length === 0) {
+        writeLog('INFO', `[WebSearch] Попытка через DDG Lite fallback для "${query}"...`);
+        try {
+            results = await searchDuckDuckGoLite(query, maxResults);
+        } catch (e) {
+            writeLog('WARN', `[WebSearch] Ошибка DDG Lite: ${e.message}`);
+        }
+    }
+
+    if (deepFetch && results && results.length > 0) {
+        const topToFetch = results.slice(0, 2);
+        for (const item of topToFetch) {
+            try {
+                const pageText = await fetchPageContent(item.url, 1600);
+                if (pageText && pageText.length > 80) {
+                    item.pageContent = pageText;
+                }
+            } catch (fetchErr) {
+                // Игнорируем ошибку чтения одной страницы
+            }
+        }
+    }
+
+    return results || [];
 }
 
 writeLog('INFO', '=== Запуск Qwen Local Server ===');
@@ -533,7 +806,72 @@ const server = http.createServer((req, res) => {
         return;
     }
 
-    // 7. Проксирование остальных запросов к Ollama (/api/chat, /api/tags, /api/pull, /api/delete и т.д.)
+    // 7. Web: Поиск в интернете (DuckDuckGo Search)
+    if (req.url === '/api/web/search' && req.method === 'POST') {
+        readJsonBody(req, async (err, body) => {
+            if (err || !body || !body.query) {
+                res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ error: 'Требуется поле query' }));
+                return;
+            }
+
+            const query = String(body.query).trim();
+            const maxResults = parseInt(body.maxResults) || 5;
+            const deepFetch = body.deepFetch !== false;
+
+            writeLog('INFO', `[WebSearch] Запрос: "${query.substring(0, 50)}" (глубокое чтение: ${deepFetch ? 'да' : 'нет'})...`);
+
+            try {
+                const results = await performWebSearch(query, maxResults, deepFetch);
+                writeLog('INFO', `[WebSearch] Успешно найдено ${results.length} результатов для "${query.substring(0, 40)}"`);
+                res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({
+                    status: 'ok',
+                    query: query,
+                    results: results
+                }));
+            } catch (searchErr) {
+                writeLog('ERROR', `[WebSearch] Ошибка поиска: ${searchErr.message}`);
+                res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ error: searchErr.message, results: [] }));
+            }
+        });
+        return;
+    }
+
+    // 8. Web: Прямое чтение страницы по URL
+    if (req.url === '/api/web/fetch' && req.method === 'POST') {
+        readJsonBody(req, async (err, body) => {
+            if (err || !body || !body.url) {
+                res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ error: 'Требуется поле url' }));
+                return;
+            }
+
+            const targetUrl = String(body.url).trim();
+            const maxChars = parseInt(body.maxChars) || 3000;
+
+            writeLog('INFO', `[WebFetch] Загрузка текста страницы: "${targetUrl}"...`);
+
+            try {
+                const text = await fetchPageContent(targetUrl, maxChars);
+                writeLog('INFO', `[WebFetch] Извлечено ${text.length} символов с "${targetUrl}"`);
+                res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({
+                    status: 'ok',
+                    url: targetUrl,
+                    text: text
+                }));
+            } catch (fetchErr) {
+                writeLog('ERROR', `[WebFetch] Ошибка загрузки страницы: ${fetchErr.message}`);
+                res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ error: fetchErr.message }));
+            }
+        });
+        return;
+    }
+
+    // 9. Проксирование остальных запросов к Ollama (/api/chat, /api/tags, /api/pull, /api/delete и т.д.)
     if (req.url.startsWith('/api/')) {
         writeLog('DEBUG', `Proxy ${req.method} ${req.url}`);
 
