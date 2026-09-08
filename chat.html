@@ -732,13 +732,13 @@
 
             <!-- Дропзона загрузки файлов -->
             <div id="ragDropzone" class="rag-dropzone">
-                <input type="file" id="ragFileInput" style="display: none;" accept=".txt,.md,.json,.csv,.log,.js,.py,.ts,.html,.css,.xml,.yml,.yaml,.sql">
+                <input type="file" id="ragFileInput" style="display: none;" accept=".docx,.txt,.md,.json,.csv,.log,.js,.py,.ts,.html,.css,.xml,.yml,.yaml,.sql">
                 <div style="font-size: 1.8rem; margin-bottom: 6px;">📄</div>
                 <div style="font-weight: 600; font-size: 0.95rem;">
-                    Перетащи текстовый файл сюда или <span id="ragBrowseBtn" style="color: #4ade80; text-decoration: underline; cursor: pointer;">выбери с диска</span>
+                    Перетащи файл сюда или <span id="ragBrowseBtn" style="color: #4ade80; text-decoration: underline; cursor: pointer;">выбери с диска</span>
                 </div>
                 <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px;">
-                    Поддерживаются .txt, .md, .json, .csv, .log, исходный код (.py, .js, др.)
+                    Поддерживаются .docx (Word документы), .txt, .md, .json, .csv, .log, исходный код
                 </div>
             </div>
 
@@ -908,24 +908,41 @@
                 const res = await fetch('/api/tags', { cache: 'no-store' });
                 if (!res.ok) throw new Error('Не удалось получить список моделей: HTTP ' + res.status);
                 const data = await res.json();
-                installedModelsCache = data.models || [];
+                
+                // Фильтруем модели эмбеддингов (nomic-embed-text и аналоги)
+                // Они работают исключительно в фоне для RAG и не предназначены для общения в чате
+                const isEmbeddingModel = m => {
+                    const n = (m.name || '').toLowerCase();
+                    return n.includes('embed') || n.includes('bge-') || n.includes('all-minilm');
+                };
 
-                logMessage('INFO', `Найдено моделей на диске: ${installedModelsCache.length}`);
+                const allModels = data.models || [];
+                installedModelsCache = allModels.filter(m => !isEmbeddingModel(m));
+
+                logMessage('INFO', `Найдено текстовых моделей для чата: ${installedModelsCache.length} (скрыто моделей эмбеддингов: ${allModels.length - installedModelsCache.length})`);
 
                 // Определяем текущую выбранную модель
                 let savedModel = localStorage.getItem('last_selected_model');
+                // Если ранее по ошибке была сохранена модель эмбеддингов, сбрасываем её
+                if (savedModel && isEmbeddingModel({ name: savedModel })) {
+                    savedModel = null;
+                }
+
                 let validSelection = installedModelsCache.find(m => m.name === savedModel);
 
-                // Если сохраненная модель не существует, выбираем первую доступную
+                // Если сохраненная модель не существует, выбираем лучшую доступную (qwen3:8b, qwen3:4b, или первую)
                 if (!validSelection && installedModelsCache.length > 0) {
-                    savedModel = installedModelsCache[0].name;
+                    const preferred = installedModelsCache.find(m => m.name.includes('8b')) ||
+                                      installedModelsCache.find(m => m.name.includes('4b')) ||
+                                      installedModelsCache[0];
+                    savedModel = preferred.name;
                     localStorage.setItem('last_selected_model', savedModel);
                 }
 
                 // Заполняем выпадающий список
                 modelSelect.innerHTML = '';
                 if (installedModelsCache.length === 0) {
-                    modelSelect.innerHTML = '<option value="">Нет установленных моделей</option>';
+                    modelSelect.innerHTML = '<option value="">Нет доступных моделей для чата</option>';
                 } else {
                     installedModelsCache.forEach(m => {
                         const opt = document.createElement('option');
@@ -1231,23 +1248,32 @@
         });
 
         // Индексация документа (отправка на сервер)
-        async function indexDocument(filename, text) {
-            if (!text || !text.trim()) {
-                showToast('Текст документа пуст');
+        async function indexDocument(filename, textOrBase64, isBase64 = false) {
+            if (!textOrBase64) {
+                showToast('Документ пуст');
                 return;
             }
 
             ragProgressBox.style.display = 'flex';
-            ragStatusText.innerText = `Индексация "${filename}" через nomic-embed-text...`;
+            ragStatusText.innerText = isBase64 
+                ? `Распаковка и индексация "${filename}"...`
+                : `Индексация "${filename}" через nomic-embed-text...`;
             ragPercentText.innerText = 'Векторизация...';
 
-            logMessage('INFO', `Отправка на индексацию: ${filename} (${text.length} симв.)`);
+            logMessage('INFO', `Отправка на индексацию: ${filename} (isBase64=${isBase64})`);
+
+            const payload = { filename: filename };
+            if (isBase64) {
+                payload.base64 = textOrBase64;
+            } else {
+                payload.text = textOrBase64;
+            }
 
             try {
                 const res = await fetch('/api/rag/index', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ filename, text })
+                    body: JSON.stringify(payload)
                 });
 
                 const data = await res.json();
@@ -1256,10 +1282,10 @@
                 }
 
                 logMessage('INFO', `Документ ${filename} успешно добавлен: ${data.chunksIndexed} чанков.`);
-                showToast(`✅ "${filename}" проиндексирован (${data.chunksIndexed} чанков)!`);
+                showToast(`✅ "${filename}" проиндексирован (${data.chunksIndexed} фрагм.)!`);
                 await loadRagDocuments();
 
-                // Автоматически включаем RAG при добавлении первого документа
+                // Автоматически включаем RAG при добавлении документа
                 if (!ragEnabled) {
                     ragEnabled = true;
                     localStorage.setItem('rag_enabled', '1');
@@ -1282,7 +1308,7 @@
                 showToast('Введите текст для индексации');
                 return;
             }
-            indexDocument(title, text);
+            indexDocument(title, text, false);
             ragManualText.value = '';
         });
 
@@ -1317,15 +1343,32 @@
         });
 
         function handleFileUpload(file) {
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                const text = e.target.result;
-                indexDocument(file.name, text);
-            };
-            reader.onerror = () => {
-                showToast('Ошибка чтения файла: ' + file.name);
-            };
-            reader.readAsText(file);
+            const isDocx = file.name.toLowerCase().endsWith('.docx');
+
+            if (isDocx) {
+                // Word файлы читаем как base64 для безопасной распаковки на сервере
+                showToast(`Загрузка Word документа: ${file.name}...`);
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const base64Data = e.target.result;
+                    indexDocument(file.name, base64Data, true);
+                };
+                reader.onerror = () => {
+                    showToast('Ошибка чтения файла: ' + file.name);
+                };
+                reader.readAsDataURL(file);
+            } else {
+                // Обычные текстовые файлы читаем как текст
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const text = e.target.result;
+                    indexDocument(file.name, text, false);
+                };
+                reader.onerror = () => {
+                    showToast('Ошибка чтения файла: ' + file.name);
+                };
+                reader.readAsText(file);
+            }
         }
 
         // Отображение цитат источников в сообщении ассистента

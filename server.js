@@ -1,7 +1,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const { exec, spawn } = require('child_process');
+const { exec, spawn, execSync } = require('child_process');
 
 const PORT = 3000;
 const OLLAMA_PORT = 11434;
@@ -155,60 +155,86 @@ function cosineSimilarity(vecA, normA, vecB, normB) {
     return denom === 0 ? 0 : dot / denom;
 }
 
-// Интеллектуальное разбиение текста на фрагменты (чанки) с перекрытием
-function chunkText(text, maxChars = 600, overlap = 80) {
+// Извлечение текста из Word-файлов (.docx) через системную утилиту tar.exe
+function extractTextFromDocx(filePath) {
+    try {
+        const xml = execSync(`tar.exe -xf "${filePath}" -O word/document.xml`, {
+            maxBuffer: 50 * 1024 * 1024,
+            encoding: 'utf8',
+            stdio: ['ignore', 'pipe', 'ignore']
+        });
+
+        const text = xml
+            .replace(/<\/w:p>/g, '\n')
+            .replace(/<w:tab\/>/g, '\t')
+            .replace(/<w:br\/>/g, '\n')
+            .replace(/<[^>]+>/g, '')
+            .replace(/&amp;/g, '&')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&quot;/g, '"')
+            .replace(/&apos;/g, "'")
+            .replace(/[ \t]+/g, ' ')
+            .replace(/\n\s*\n+/g, '\n\n')
+            .trim();
+
+        return text;
+    } catch (err) {
+        writeLog('ERROR', `Ошибка извлечения текста из docx (${filePath}): ${err.message}`);
+        throw new Error('Не удалось распаковать docx файл: ' + err.message);
+    }
+}
+
+// Интеллектуальное разбиение текста на фрагменты (чанки) с жестким ограничением длины
+function chunkText(text, maxChars = 500, overlap = 70) {
     if (!text || text.trim().length === 0) return [];
 
     const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
-    const paragraphs = normalized.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+    const paragraphs = normalized.split(/\n+/).map(p => p.trim()).filter(Boolean);
     const chunks = [];
     let currentChunk = '';
 
     for (const para of paragraphs) {
-        if (para.length > maxChars) {
-            const sentences = para.split(/(?<=[.?!;:\n])\s+/).filter(Boolean);
-            for (const s of sentences) {
-                if ((currentChunk + ' ' + s).trim().length > maxChars) {
-                    if (currentChunk.trim().length > 0) {
-                        chunks.push(currentChunk.trim());
-                        const words = currentChunk.split(/\s+/);
-                        let overlapText = '';
-                        for (let i = words.length - 1; i >= 0; i--) {
-                            if ((words[i] + ' ' + overlapText).length <= overlap) {
-                                overlapText = (words[i] + ' ' + overlapText).trim();
-                            } else break;
-                        }
-                        currentChunk = (overlapText + ' ' + s).trim();
-                    } else {
-                        let remaining = s;
-                        while (remaining.length > maxChars) {
-                            chunks.push(remaining.slice(0, maxChars).trim());
-                            remaining = remaining.slice(maxChars - overlap).trim();
-                        }
-                        currentChunk = remaining;
-                    }
-                } else {
-                    currentChunk = currentChunk ? (currentChunk + '\n' + s).trim() : s;
+        if ((currentChunk + ' ' + para).length > maxChars) {
+            if (currentChunk.trim().length > 0) {
+                chunks.push(currentChunk.trim());
+                const words = currentChunk.split(/\s+/);
+                let overlapText = '';
+                for (let i = words.length - 1; i >= 0; i--) {
+                    if ((words[i] + ' ' + overlapText).length <= overlap) {
+                        overlapText = (words[i] + ' ' + overlapText).trim();
+                    } else break;
                 }
+                currentChunk = overlapText;
             }
-        } else {
-            if ((currentChunk + '\n\n' + para).trim().length > maxChars) {
-                if (currentChunk.trim().length > 0) {
-                    chunks.push(currentChunk.trim());
-                    const words = currentChunk.split(/\s+/);
-                    let overlapText = '';
-                    for (let i = words.length - 1; i >= 0; i--) {
-                        if ((words[i] + ' ' + overlapText).length <= overlap) {
-                            overlapText = (words[i] + ' ' + overlapText).trim();
-                        } else break;
+
+            if (para.length > maxChars) {
+                const words = para.split(/\s+/).filter(Boolean);
+                for (const word of words) {
+                    if ((currentChunk + ' ' + word).length > maxChars) {
+                        if (currentChunk.trim().length > 0) {
+                            chunks.push(currentChunk.trim());
+                            currentChunk = '';
+                        }
+                        if (word.length > maxChars) {
+                            let w = word;
+                            while (w.length > maxChars) {
+                                chunks.push(w.slice(0, maxChars));
+                                w = w.slice(maxChars);
+                            }
+                            currentChunk = w;
+                        } else {
+                            currentChunk = word;
+                        }
+                    } else {
+                        currentChunk = currentChunk ? (currentChunk + ' ' + word) : word;
                     }
-                    currentChunk = (overlapText + '\n\n' + para).trim();
-                } else {
-                    currentChunk = para;
                 }
             } else {
-                currentChunk = currentChunk ? (currentChunk + '\n\n' + para).trim() : para;
+                currentChunk = currentChunk ? (currentChunk + ' ' + para) : para;
             }
+        } else {
+            currentChunk = currentChunk ? (currentChunk + ' ' + para) : para;
         }
     }
 
@@ -216,7 +242,7 @@ function chunkText(text, maxChars = 600, overlap = 80) {
         chunks.push(currentChunk.trim());
     }
 
-    return chunks.filter(c => c.length >= 15);
+    return chunks.filter(c => c.length >= 10);
 }
 
 // Парсер JSON тела запроса
@@ -285,31 +311,68 @@ const server = http.createServer((req, res) => {
     // 3. RAG: Индексация нового документа (разбивка + эмбеддинги)
     if (req.url === '/api/rag/index' && req.method === 'POST') {
         readJsonBody(req, async (err, body) => {
-            if (err || !body || !body.filename || !body.text) {
+            if (err || !body || !body.filename) {
                 res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
-                res.end(JSON.stringify({ error: 'Требуются поля filename и text' }));
+                res.end(JSON.stringify({ error: 'Требуется имя файла' }));
                 return;
             }
 
             const filename = path.basename(body.filename).trim();
-            const text = String(body.text).trim();
+            let text = body.text ? String(body.text).trim() : '';
+
+            // Поддержка Base64 (например, загрузка файлов .docx, бинарных файлов)
+            if (body.base64) {
+                try {
+                    const commaIdx = body.base64.indexOf(',');
+                    const pureB64 = commaIdx >= 0 ? body.base64.slice(commaIdx + 1) : body.base64;
+                    const buffer = Buffer.from(pureB64, 'base64');
+
+                    const tempDocxPath = path.join(KNOWLEDGE_DIR, `temp_${Date.now()}_${filename}`);
+                    fs.writeFileSync(tempDocxPath, buffer);
+
+                    if (filename.toLowerCase().endsWith('.docx')) {
+                        writeLog('INFO', `[RAG] Распаковка текста из Word-документа (.docx): "${filename}"...`);
+                        text = extractTextFromDocx(tempDocxPath);
+                        writeLog('INFO', `[RAG] Извлечено ${text.length} символов текста из "${filename}".`);
+                    } else {
+                        text = buffer.toString('utf8');
+                    }
+
+                    try { fs.unlinkSync(tempDocxPath); } catch (e) {}
+                } catch (b64Err) {
+                    writeLog('ERROR', `[RAG] Ошибка обработки файла "${filename}": ${b64Err.message}`);
+                    res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ error: 'Ошибка обработки файла: ' + b64Err.message }));
+                    return;
+                }
+            } else if (filename.toLowerCase().endsWith('.docx') && text.startsWith('PK')) {
+                // Если файл .docx был передан как бинарная строка
+                try {
+                    const tempDocxPath = path.join(KNOWLEDGE_DIR, `temp_${Date.now()}_${filename}`);
+                    fs.writeFileSync(tempDocxPath, text, 'binary');
+                    text = extractTextFromDocx(tempDocxPath);
+                    try { fs.unlinkSync(tempDocxPath); } catch (e) {}
+                } catch (pkErr) {
+                    writeLog('ERROR', `[RAG] Ошибка распаковки docx "${filename}": ${pkErr.message}`);
+                }
+            }
 
             if (!filename || !text) {
                 res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
-                res.end(JSON.stringify({ error: 'Пустое имя файла или содержимое' }));
+                res.end(JSON.stringify({ error: 'Пустой документ или не удалось извлечь текст' }));
                 return;
             }
 
             writeLog('INFO', `[RAG] Начало индексации документа: "${filename}" (${text.length} символов)...`);
 
-            // Сохраняем текстовый оригинал в папку knowledge
+            // Сохраняем текстовую копию в папку knowledge
             try {
-                fs.writeFileSync(path.join(KNOWLEDGE_DIR, filename), text, 'utf8');
+                fs.writeFileSync(path.join(KNOWLEDGE_DIR, filename + '.txt'), text, 'utf8');
             } catch (e) {
-                writeLog('WARN', `[RAG] Не удалось сохранить копию в knowledge/${filename}: ${e.message}`);
+                writeLog('WARN', `[RAG] Не удалось сохранить копию в knowledge: ${e.message}`);
             }
 
-            const chunks = chunkText(text);
+            const chunks = chunkText(text, 500, 70);
             if (chunks.length === 0) {
                 res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
                 res.end(JSON.stringify({ error: 'Текст слишком короткий для индексации' }));
