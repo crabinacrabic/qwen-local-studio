@@ -743,7 +743,7 @@ function classifyModel(modelName, sizeBytes = 0, hwSpecs = null) {
         className = '⚡ Эмбеддинги (RAG)';
         if (name.includes('0.6b')) {
             tier = 'light';
-            tierName = '🪶 Ультралегкий';
+            tierName = '🌱 Ультралегкий';
             approxVramGB = 0.6;
         } else {
             tier = 'flagship';
@@ -758,7 +758,7 @@ function classifyModel(modelName, sizeBytes = 0, hwSpecs = null) {
         className = '👁️ Зрение (Vision)';
         if (name.includes('2b')) {
             tier = 'light';
-            tierName = '🪶 Компактный';
+            tierName = '🌱 Компактный';
             approxVramGB = 1.8;
         } else if (name.includes('4b')) {
             tier = 'balanced';
@@ -781,7 +781,7 @@ function classifyModel(modelName, sizeBytes = 0, hwSpecs = null) {
         className = '💻 Кодинг';
         if (name.includes('1.5b') || name.includes('3b')) {
             tier = 'light';
-            tierName = '🪶 Компактный';
+            tierName = '🌱 Компактный';
             approxVramGB = 2.0;
         } else if (name.includes('7b')) {
             tier = 'flagship';
@@ -805,7 +805,7 @@ function classifyModel(modelName, sizeBytes = 0, hwSpecs = null) {
 
         if (name.includes('0.5b') || name.includes('0.6b') || name.includes('1.5b') || name.includes('1.7b') || name.includes(':2b') || name.includes('0.8b')) {
             tier = 'light';
-            tierName = '🪶 Ультралегкий';
+            tierName = '🌱 Ультралегкий';
             approxVramGB = 1.8;
         } else if (name.includes(':3b') || name.includes(':4b')) {
             tier = 'balanced';
@@ -895,6 +895,484 @@ function classifyModel(modelName, sizeBytes = 0, hwSpecs = null) {
     };
 }
 
+function buildQwenCatalog(installedModels = [], hwSpecs = null) {
+    const installedNames = (installedModels || []).map(m => (m.name || '').toLowerCase());
+    const d = OLLAMA_DATES_CACHE.dates || {};
+    const date25 = d['qwen2.5'] || 'Сентябрь 2024';
+    const dateCoder25 = d['qwen2.5-coder'] || 'Май 2025';
+    const date3 = d['qwen3'] || 'Октябрь 2025';
+    const dateVL = d['qwen3-vl'] || 'Октябрь 2025';
+    const dateEmbed = d['qwen3-embedding'] || 'Сентябрь 2025';
+    const dateCoder3 = d['qwen3-coder'] || 'Сентябрь 2025';
+    const date35 = d['qwen3.5'] || 'Сентябрь 2026';
+    const date36 = d['qwen3.6'] || 'Сентябрь 2026';
+    const date38 = d['qwen3.8'] || 'Август 2026';
+
+    const catalogRaw = [
+        // ===== ЧАТ И ЛОГИКА: 🌱 УЛЬТРАЛЕГКИЙ (0.5B – 2B) =====
+        {
+            tag: 'qwen2.5:0.5b',
+            displayName: 'Qwen2.5 0.5B',
+            family: 'qwen2.5',
+            modelClass: 'chat',
+            className: '💬 Чат и логика',
+            tier: 'light',
+            tierName: '🌱 Ультралегкий',
+            generation: '2.5',
+            releaseDate: date25,
+            params: '0.5B',
+            sizeApprox: '398 MB',
+            description: 'Базовая ультракомпактная модель 2024 года. Моментальный запуск при минимальном потреблении.',
+            lineage: 'Qwen2.5 0.5B ➔ Qwen3 0.6B ➔ Qwen3.5 0.8B',
+            predecessor: null,
+            successor: 'qwen3:0.6b',
+            parameterAlert: null
+        },
+        {
+            tag: 'qwen2.5:1.5b',
+            displayName: 'Qwen2.5 1.5B',
+            family: 'qwen2.5',
+            modelClass: 'chat',
+            className: '💬 Чат и логика',
+            tier: 'light',
+            tierName: '🌱 Ультралегкий',
+            generation: '2.5',
+            releaseDate: date25,
+            params: '1.5B',
+            sizeApprox: '986 MB',
+            description: 'Популярная легкая модель поколения 2.5 для быстрых ответов.',
+            lineage: 'Qwen2.5 1.5B ➔ Qwen3 1.7B ➔ Qwen3.5 2B',
+            predecessor: null,
+            successor: 'qwen3:1.7b',
+            parameterAlert: null
+        },
+        {
+            tag: 'qwen3:0.6b',
+            displayName: 'Qwen3 0.6B',
+            family: 'qwen3',
+            modelClass: 'chat',
+            className: '💬 Чат и логика',
+            tier: 'light',
+            tierName: '🌱 Ультралегкий',
+            generation: '3.0',
+            releaseDate: date3,
+            params: '0.6B',
+            sizeApprox: '522 MB',
+            description: 'Поколение 3.0: ультралегкая модель с мгновенным откликом (100+ ток/сек).',
+            lineage: 'Qwen2.5 0.5B ➔ Qwen3 0.6B ➔ Qwen3.5 0.8B',
+            predecessor: 'qwen2.5:0.5b',
+            successor: 'qwen3.5:0.8b',
+            parameterAlert: null
+        },
+        {
+            tag: 'qwen3:1.7b',
+            displayName: 'Qwen3 1.7B',
+            family: 'qwen3',
+            modelClass: 'chat',
+            className: '💬 Чат и логика',
+            tier: 'light',
+            tierName: '🌱 Ультралегкий',
+            generation: '3.0',
+            releaseDate: date3,
+            params: '1.7B',
+            sizeApprox: '1.4 GB',
+            description: 'Эффективная модель поколения 3.0 с хорошим балансом рассуждений и скорости.',
+            lineage: 'Qwen2.5 1.5B ➔ Qwen3 1.7B ➔ Qwen3.5 2B',
+            predecessor: 'qwen2.5:1.5b',
+            successor: 'qwen3.5:2b',
+            parameterAlert: null
+        },
+        {
+            tag: 'qwen3.5:0.8b',
+            displayName: 'Qwen3.5 0.8B',
+            family: 'qwen3.5',
+            modelClass: 'chat',
+            className: '💬 Чат и логика',
+            tier: 'light',
+            tierName: '🌱 Ультралегкий',
+            generation: '3.5',
+            releaseDate: date35,
+            params: '0.8B',
+            sizeApprox: '1.0 GB',
+            description: 'Новейшая микро-модель 2026 года с блоком рассуждений и низким расходом памяти.',
+            lineage: 'Qwen3 0.6B ➔ Qwen3.5 0.8B',
+            predecessor: 'qwen3:0.6b',
+            successor: null,
+            parameterAlert: '✅ Прямой наследник Qwen3 0.6B: параметры выросли до 0.8B (+0.2B), сохраняя ультранизкий вес ~1.0 GB.'
+        },
+        {
+            tag: 'qwen3.5:2b',
+            displayName: 'Qwen3.5 2B',
+            family: 'qwen3.5',
+            modelClass: 'chat',
+            className: '💬 Чат и логика',
+            tier: 'light',
+            tierName: '🌱 Ультралегкий',
+            generation: '3.5',
+            releaseDate: date35,
+            params: '2.3B',
+            sizeApprox: '2.7 GB',
+            description: 'Новейшая легкая модель 2026 года: глубокое пошаговое мышление (<thought>), опережает 7B прошлых лет.',
+            lineage: 'Qwen2.5 1.5B ➔ Qwen3 1.7B ➔ Qwen3.5 2B',
+            predecessor: 'qwen3:1.7b',
+            successor: null,
+            parameterAlert: '⚠️ Внимание: модель является прямым наследником Qwen3 1.7B, но параметров стало больше: 2.3B вместо 1.7B (+35% к памяти: 2.7 GB против 1.4 GB).'
+        },
+
+        // ===== ЧАТ И ЛОГИКА: 🚀 СБАЛАНСИРОВАННЫЙ (3B – 4B) =====
+        {
+            tag: 'qwen2.5:3b',
+            displayName: 'Qwen2.5 3B',
+            family: 'qwen2.5',
+            modelClass: 'chat',
+            className: '💬 Чат и логика',
+            tier: 'balanced',
+            tierName: '🚀 Сбалансированный',
+            generation: '2.5',
+            releaseDate: date25,
+            params: '3.1B',
+            sizeApprox: '1.9 GB',
+            description: 'Сбалансированная модель 2024 года, проверенная надежная классика.',
+            lineage: 'Qwen2.5 3B ➔ Qwen3 4B ➔ Qwen3.5 4B',
+            predecessor: null,
+            successor: 'qwen3:4b',
+            parameterAlert: null
+        },
+        {
+            tag: 'qwen3:4b',
+            displayName: 'Qwen3 4B',
+            family: 'qwen3',
+            modelClass: 'chat',
+            className: '💬 Чат и логика',
+            tier: 'balanced',
+            tierName: '🚀 Сбалансированный',
+            generation: '3.0',
+            releaseDate: date3,
+            params: '4.7B',
+            sizeApprox: '2.6 GB',
+            description: 'Популярная рабочая лошадка первого поколения Qwen3. Скорость до 70 ток/сек.',
+            lineage: 'Qwen2.5 3B ➔ Qwen3 4B ➔ Qwen3.5 4B',
+            predecessor: 'qwen2.5:3b',
+            successor: 'qwen3.5:4b',
+            parameterAlert: null
+        },
+        {
+            tag: 'qwen3.5:4b',
+            displayName: 'Qwen3.5 4B',
+            family: 'qwen3.5',
+            modelClass: 'chat',
+            className: '💬 Чат и логика',
+            tier: 'balanced',
+            tierName: '🚀 Сбалансированный',
+            generation: '3.5',
+            releaseDate: date35,
+            params: '4.7B',
+            sizeApprox: '3.4 GB',
+            description: 'Новейшая модель 2026 года: баланс интеллекта, скорости 60+ ток/сек и мультимодальности.',
+            lineage: 'Qwen3 4B ➔ Qwen3.5 4B',
+            predecessor: 'qwen3:4b',
+            successor: null,
+            parameterAlert: '✅ Сопоставимый размер параметров (~4.7B, 3.4 GB). Занимает менее половины VRAM вашей видеокарты RX 6600 (8 GB).'
+        },
+
+        // ===== ЧАТ И ЛОГИКА: ⚡ ФЛАГМАН (7B – 9B) =====
+        {
+            tag: 'qwen2.5:7b',
+            displayName: 'Qwen2.5 7B',
+            family: 'qwen2.5',
+            modelClass: 'chat',
+            className: '💬 Чат и логика',
+            tier: 'flagship',
+            tierName: '⚡ Флагман',
+            generation: '2.5',
+            releaseDate: date25,
+            params: '7.6B',
+            sizeApprox: '4.7 GB',
+            description: 'Классический флагман 2024 года, завоевавший признание среди open-source нейросетей.',
+            lineage: 'Qwen2.5 7B ➔ Qwen3 8B ➔ Qwen3.5 9B',
+            predecessor: null,
+            successor: 'qwen3:8b',
+            parameterAlert: null
+        },
+        {
+            tag: 'qwen3:8b',
+            displayName: 'Qwen3 8B',
+            family: 'qwen3',
+            modelClass: 'chat',
+            className: '💬 Чат и логика',
+            tier: 'flagship',
+            tierName: '⚡ Флагман',
+            generation: '3.0',
+            releaseDate: date3,
+            params: '8.2B',
+            sizeApprox: '5.2 GB',
+            description: 'Хит 2025 года: золотой стандарт для видеокарт с 8 GB VRAM. Отличная логика и русский язык.',
+            lineage: 'Qwen2.5 7B ➔ Qwen3 8B ➔ Qwen3.5 9B',
+            predecessor: 'qwen2.5:7b',
+            successor: 'qwen3.5:9b',
+            parameterAlert: null
+        },
+        {
+            tag: 'qwen3.5:9b',
+            displayName: 'Qwen3.5 9B',
+            family: 'qwen3.5',
+            modelClass: 'chat',
+            className: '💬 Чат и логика',
+            tier: 'flagship',
+            tierName: '⚡ Флагман',
+            generation: '3.5',
+            releaseDate: date35,
+            params: '9.7B',
+            sizeApprox: '6.6 GB',
+            description: 'Новейший флагман 2026: контекст 256K, нативное глубокое мышление (<thought>), мультимодальность.',
+            lineage: 'Qwen3 8B ➔ Qwen3.5 9B',
+            predecessor: 'qwen3:8b',
+            successor: null,
+            parameterAlert: 'ℹ️ Модель является прямым наследником Qwen3 8B, параметров стало 9.7B вместо 8.2B (+18% веса: 6.6 GB против 5.2 GB). 100% помещается в 8 GB VRAM RX 6600!'
+        },
+
+        // ===== ЧАТ И ЛОГИКА: 🧠 ЭКСПЕРТНЫЙ (27B – 35B+) =====
+        {
+            tag: 'qwen2.5:32b',
+            displayName: 'Qwen2.5 32B',
+            family: 'qwen2.5',
+            modelClass: 'chat',
+            className: '💬 Чат и логика',
+            tier: 'expert',
+            tierName: '🧠 Экспертный',
+            generation: '2.5',
+            releaseDate: date25,
+            params: '32.8B',
+            sizeApprox: '20 GB',
+            description: 'Тяжелый эксперт поколения 2.5 для сложнейшего анализа данных.',
+            lineage: 'Qwen2.5 32B ➔ Qwen3 30B ➔ Qwen3.6 27B ➔ Qwen3.8 27B',
+            predecessor: null,
+            successor: 'qwen3:30b',
+            parameterAlert: null
+        },
+        {
+            tag: 'qwen3:30b',
+            displayName: 'Qwen3 30B',
+            family: 'qwen3',
+            modelClass: 'chat',
+            className: '💬 Чат и логика',
+            tier: 'expert',
+            tierName: '🧠 Экспертный',
+            generation: '3.0',
+            releaseDate: date3,
+            params: '30B',
+            sizeApprox: '18 GB',
+            description: 'Экспертная модель поколения 3.0. Требует выгрузки в 16 GB системной памяти.',
+            lineage: 'Qwen2.5 32B ➔ Qwen3 30B ➔ Qwen3.6 27B ➔ Qwen3.8 27B',
+            predecessor: 'qwen2.5:32b',
+            successor: 'qwen3.6:27b',
+            parameterAlert: null
+        },
+        {
+            tag: 'qwen3.6:27b',
+            displayName: 'Qwen3.6 27B',
+            family: 'qwen3.6',
+            modelClass: 'chat',
+            className: '💬 Чат и логика',
+            tier: 'expert',
+            tierName: '🧠 Экспертный',
+            generation: '3.6',
+            releaseDate: date36,
+            params: '27B',
+            sizeApprox: '17 GB',
+            description: 'Поколение 3.6: усиленный блок высшей математики и логических доказательств.',
+            lineage: 'Qwen3 30B ➔ Qwen3.6 27B ➔ Qwen3.8 27B',
+            predecessor: 'qwen3:30b',
+            successor: 'qwen3.8:27b',
+            parameterAlert: '⚠️ Требует 16 GB RAM Offload. Скорость генерации около 5–8 ток/сек.'
+        },
+        {
+            tag: 'qwen3.8:27b',
+            displayName: 'Qwen3.8 27B',
+            family: 'qwen3.8',
+            modelClass: 'chat',
+            className: '💬 Чат и логика',
+            tier: 'expert',
+            tierName: '🧠 Экспертный',
+            generation: '3.8',
+            releaseDate: date38,
+            params: '27B',
+            sizeApprox: '17 GB',
+            description: 'Новейшая архитектура 3.8 с глубоким автономным мышлением высшего класса.',
+            lineage: 'Qwen3.6 27B ➔ Qwen3.8 27B',
+            predecessor: 'qwen3.6:27b',
+            successor: null,
+            parameterAlert: '⚠️ Модель высшего класса: требует 16 GB RAM Offload. Плотная архитектура 27B.'
+        },
+
+        // ===== 👁️ ЗРЕНИЕ (VISION) =====
+        {
+            tag: 'qwen3-vl:2b',
+            displayName: 'Qwen3-VL 2B',
+            family: 'qwen3-vl',
+            modelClass: 'vision',
+            className: '👁️ Зрение (Vision)',
+            tier: 'light',
+            tierName: '🌱 Компактный',
+            generation: '3.0',
+            releaseDate: dateVL,
+            params: '2.2B',
+            sizeApprox: '1.8 GB',
+            description: 'Миниатюрная мультимодальная модель для распознавания простых изображений.',
+            lineage: 'Qwen3-VL 2B',
+            predecessor: null,
+            successor: null,
+            parameterAlert: null
+        },
+        {
+            tag: 'qwen3-vl:4b',
+            displayName: 'Qwen3-VL 4B',
+            family: 'qwen3-vl',
+            modelClass: 'vision',
+            className: '👁️ Зрение (Vision)',
+            tier: 'balanced',
+            tierName: '🚀 Сбалансированный',
+            generation: '3.0',
+            releaseDate: dateVL,
+            params: '4.4B',
+            sizeApprox: '3.3 GB',
+            description: 'Рекомендуемая мультимодальная модель: чтение текста на картинках, скриншотах и диаграммах.',
+            lineage: 'Qwen3-VL 4B',
+            predecessor: null,
+            successor: null,
+            parameterAlert: '✅ Рекомендуется: отличный баланс распознавания скриншотов и скорости (100% в 8 GB VRAM).'
+        },
+        {
+            tag: 'qwen3-vl:8b',
+            displayName: 'Qwen3-VL 8B',
+            family: 'qwen3-vl',
+            modelClass: 'vision',
+            className: '👁️ Зрение (Vision)',
+            tier: 'flagship',
+            tierName: '⚡ Флагман',
+            generation: '3.0',
+            releaseDate: dateVL,
+            params: '8.3B',
+            sizeApprox: '5.6 GB',
+            description: 'Высокодетализированный анализ сложных схем, чертежей и рукописного текста.',
+            lineage: 'Qwen3-VL 8B',
+            predecessor: null,
+            successor: null,
+            parameterAlert: 'ℹ️ Высокое разрешение анализа, занимает 5.6 GB VRAM.'
+        },
+
+        // ===== 💻 КОДИНГ (CODER) =====
+        {
+            tag: 'qwen2.5-coder:1.5b',
+            displayName: 'Qwen2.5-Coder 1.5B',
+            family: 'qwen2.5-coder',
+            modelClass: 'coder',
+            className: '💻 Кодинг',
+            tier: 'light',
+            tierName: '🌱 Компактный',
+            generation: '2.5',
+            releaseDate: dateCoder25,
+            params: '1.5B',
+            sizeApprox: '986 MB',
+            description: 'Компактная модель для автодополнения кода и написания коротких скриптов.',
+            lineage: 'Qwen2.5-Coder 1.5B',
+            predecessor: null,
+            successor: null,
+            parameterAlert: null
+        },
+        {
+            tag: 'qwen2.5-coder:7b',
+            displayName: 'Qwen2.5-Coder 7B',
+            family: 'qwen2.5-coder',
+            modelClass: 'coder',
+            className: '💻 Кодинг',
+            tier: 'flagship',
+            tierName: '⚡ Флагман',
+            generation: '2.5',
+            releaseDate: dateCoder25,
+            params: '7.6B',
+            sizeApprox: '4.7 GB',
+            description: 'Золотой стандарт для разработки под 8 GB VRAM: генерация кода, поиск багов, написание тестов.',
+            lineage: 'Qwen2.5-Coder 7B',
+            predecessor: null,
+            successor: null,
+            parameterAlert: '✅ Рекомендуется для кодинга: 100% помещается в 8 GB VRAM RX 6600.'
+        },
+        {
+            tag: 'qwen2.5-coder:14b',
+            displayName: 'Qwen2.5-Coder 14B',
+            family: 'qwen2.5-coder',
+            modelClass: 'coder',
+            className: '💻 Кодинг',
+            tier: 'expert',
+            tierName: '🧠 Экспертный',
+            generation: '2.5',
+            releaseDate: dateCoder25,
+            params: '14.8B',
+            sizeApprox: '9.0 GB',
+            description: 'Профессиональная разработка больших проектов и сложных алгоритмов.',
+            lineage: 'Qwen2.5-Coder 14B',
+            predecessor: null,
+            successor: null,
+            parameterAlert: '⚠️ Требует частичного оффлоада в RAM.'
+        },
+
+        // ===== ⚡ ЭМБЕДДИНГИ (RAG) =====
+        {
+            tag: 'qwen3-embedding:0.6b',
+            displayName: 'Qwen3-Embedding 0.6B',
+            family: 'qwen3-embedding',
+            modelClass: 'embedding',
+            className: '⚡ Эмбеддинги (RAG)',
+            tier: 'light',
+            tierName: '🌱 Стандарт RAG',
+            generation: '3.0',
+            releaseDate: dateEmbed,
+            params: '0.6B',
+            sizeApprox: '639 MB',
+            description: 'Официальная модель эмбеддингов Qwen для локальной базы знаний с контекстом 32K.',
+            lineage: 'nomic-embed-text ➔ Qwen3-Embedding 0.6B',
+            predecessor: 'nomic-embed-text',
+            successor: null,
+            parameterAlert: '✅ Официальные эмбеддинги Qwen для RAG: превосходная семантика русского языка.'
+        },
+        {
+            tag: 'qwen3-embedding:4b',
+            displayName: 'Qwen3-Embedding 4B',
+            family: 'qwen3-embedding',
+            modelClass: 'embedding',
+            className: '⚡ Эмбеддинги (RAG)',
+            tier: 'flagship',
+            tierName: '⚡ Продвинутый',
+            generation: '3.0',
+            releaseDate: dateEmbed,
+            params: '4.2B',
+            sizeApprox: '2.5 GB',
+            description: 'Тяжелая модель векторного поиска для огромных корпоративных архивов.',
+            lineage: 'Qwen3-Embedding 4B',
+            predecessor: null,
+            successor: null,
+            parameterAlert: null
+        }
+    ];
+
+    return catalogRaw.map(item => {
+        const isInstalled = installedNames.some(n => n === item.tag.toLowerCase() || n.startsWith(item.tag.toLowerCase() + ':'));
+        let compat = { badge: '🟢 100% GPU', color: '#2ea043', text: 'Полностью в VRAM (быстрая генерация)' };
+        if (item.tier === 'expert') {
+            compat = { badge: '🟡 RAM Offload', color: '#d29922', text: 'Требует 16 GB системной RAM' };
+        } else if (item.tier === 'flagship' && item.sizeApprox.includes('9.')) {
+            compat = { badge: '🟡 RAM Offload', color: '#d29922', text: 'Частичная выгрузка в RAM' };
+        }
+
+        return {
+            ...item,
+            isInstalled: isInstalled,
+            compatibility: compat
+        };
+    });
+}
+
 async function checkModelUpdates(forceRefresh = false) {
     const now = Date.now();
     if (!forceRefresh && updateCheckCache.data && (now - updateCheckCache.timestamp < 10 * 60 * 1000)) {
@@ -924,6 +1402,7 @@ async function checkModelUpdates(forceRefresh = false) {
             newGeneration: 'Qwen3.5 9B (Сентябрь 2026)',
             targetReleaseDate: OLLAMA_DATES_CACHE.dates['qwen3.5'] || 'Сентябрь 2026',
             evolution: 'Qwen3 8B (Окт 2025) ➔ Qwen3.5 9B (Сент 2026) ✨',
+            parameterAlert: 'ℹ️ Модель является прямым наследником Qwen3 8B, параметров стало 9.7B вместо 8.2B (+18% веса: 6.6 GB против 5.2 GB). 100% помещается в 8 GB VRAM RX 6600!',
             description: 'Новейшая архитектура: контекст 256K, глубокое мышление (<thought>), нативная мультимодальность. Заметно умнее первого поколения Qwen3 8B.',
             vramFit: '🟢 100% GPU (Идеально под RX 6600 8 GB)'
         },
@@ -941,6 +1420,7 @@ async function checkModelUpdates(forceRefresh = false) {
             newGeneration: 'Qwen3.5 4B (Сентябрь 2026)',
             targetReleaseDate: OLLAMA_DATES_CACHE.dates['qwen3.5'] || 'Сентябрь 2026',
             evolution: 'Qwen3 4B (Окт 2025) ➔ Qwen3.5 4B (Сент 2026) ⚡',
+            parameterAlert: '✅ Сопоставимый размер параметров (~4.7B, 3.4 GB). Занимает менее половины VRAM вашей RX 6600 (8 GB).',
             description: 'Свежая компактная модель: скорость 50+ токенов/сек, мультимодальность, идеально для повседневных задач.',
             vramFit: '🟢 100% GPU (Занимает меньше половины VRAM)'
         },
@@ -949,15 +1429,16 @@ async function checkModelUpdates(forceRefresh = false) {
             modelClass: 'chat',
             className: '💬 Чат и логика',
             tier: 'light',
-            tierName: '🪶 УЛЬТРАЛЕГКИЙ',
+            tierName: '🌱 УЛЬТРАЛЕГКИЙ',
             targetFamily: 'qwen3.5',
             targetTag: 'qwen3.5:2b',
             title: 'Qwen3.5 2B (Компактная)',
-            sizeApprox: '~1.8 GB',
+            sizeApprox: '~2.7 GB',
             oldGeneration: 'Qwen3 1.7B / 0.6B (Октябрь 2025)',
             newGeneration: 'Qwen3.5 2B (Сентябрь 2026)',
             targetReleaseDate: OLLAMA_DATES_CACHE.dates['qwen3.5'] || 'Сентябрь 2026',
             evolution: 'Qwen3 0.6B/1.7B (Окт 2025) ➔ Qwen3.5 2B (Сент 2026) 🚀',
+            parameterAlert: '⚠️ Внимание: модель является прямым наследником Qwen3 1.7B, но параметров стало больше: 2.3B вместо 1.7B (+35% к памяти: 2.7 GB против 1.4 GB).',
             description: 'Миниатюрная модель 2026 года нового поколения с блоками размышлений.',
             vramFit: '🟢 100% GPU (Минимальная нагрузка)'
         },
@@ -966,7 +1447,7 @@ async function checkModelUpdates(forceRefresh = false) {
             modelClass: 'embedding',
             className: '⚡ Эмбеддинги (RAG)',
             tier: 'light',
-            tierName: '🪶 СТАНДАРТ RAG',
+            tierName: '🌱 СТАНДАРТ RAG',
             targetFamily: 'qwen3-embedding',
             targetTag: 'qwen3-embedding:0.6b',
             title: 'Qwen3-Embedding 0.6B (RAG)',
@@ -975,6 +1456,7 @@ async function checkModelUpdates(forceRefresh = false) {
             newGeneration: 'Qwen3-Embedding 0.6B (Сентябрь 2025)',
             targetReleaseDate: OLLAMA_DATES_CACHE.dates['qwen3-embedding'] || 'Сентябрь 2025',
             evolution: 'nomic-embed-text ➔ Qwen3-Embedding 0.6B ✨',
+            parameterAlert: '✅ Официальная модель эмбеддингов Qwen для базы знаний: расширенный контекст 32K, идеальная семантика русского языка.',
             description: 'Официальная модель эмбеддингов Qwen для базы знаний: расширенный контекст 32K, идеальная семантика русского языка.',
             vramFit: '🟢 Минимальный вес (600 MB)'
         }
@@ -1002,6 +1484,7 @@ async function checkModelUpdates(forceRefresh = false) {
                         newGeneration: rule.newGeneration,
                         targetReleaseDate: rule.targetReleaseDate,
                         evolution: rule.evolution,
+                        parameterAlert: rule.parameterAlert,
                         description: rule.description,
                         vramFit: rule.vramFit
                     });
@@ -1029,11 +1512,14 @@ async function checkModelUpdates(forceRefresh = false) {
                 newGeneration: 'Qwen3-VL 4B (Октябрь 2025)',
                 targetReleaseDate: OLLAMA_DATES_CACHE.dates['qwen3-vl'] || 'Октябрь 2025',
                 evolution: '✨ Новая категория: Компьютерное зрение',
+                parameterAlert: '✅ Рекомендуется: отличный баланс распознавания скриншотов и скорости (100% в 8 GB VRAM).',
                 description: 'Новая модель со зрением: распознавание изображений, графиков, скриншотов и документов.',
                 vramFit: '🟢 Идеально для 8 GB VRAM'
             });
         }
     }
+
+    const catalog = buildQwenCatalog(installed, hwSpecs);
 
     const result = {
         status: 'ok',
@@ -1041,6 +1527,7 @@ async function checkModelUpdates(forceRefresh = false) {
         installedCount: installed.length,
         updatesCount: updates.length,
         updates: updates,
+        catalog: catalog,
         checkedAt: getLocalTimestamp()
     };
 
@@ -1396,6 +1883,22 @@ const server = http.createServer((req, res) => {
             writeLog('ERROR', `[ModelUpdates] Ошибка проверки: ${err.message}`);
             res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
             res.end(JSON.stringify({ error: err.message, updates: [] }));
+        });
+        return;
+    }
+
+    // 9.0 Каталог и древо поколений Qwen
+    if (req.url === '/api/models/catalog' && req.method === 'GET') {
+        Promise.all([
+            getLocalOllamaModels(),
+            getSystemHardwareSpecs()
+        ]).then(([models, hwSpecs]) => {
+            const catalog = buildQwenCatalog(models, hwSpecs);
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ status: 'ok', catalog: catalog, hardware: hwSpecs }));
+        }).catch(err => {
+            res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ error: err.message, catalog: [] }));
         });
         return;
     }
