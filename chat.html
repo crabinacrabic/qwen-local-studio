@@ -1346,11 +1346,374 @@
         .btn-check-updates-header:hover {
             background: rgba(59, 130, 246, 0.25);
         }
+
+        /* ===== САЙДБАР ИСТОРИИ ДИАЛОГОВ (SIDEBAR) ===== */
+        .chat-sidebar {
+            width: 270px;
+            background: #0d1117;
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            flex-shrink: 0;
+            transition: margin-left 0.25s ease, transform 0.25s ease;
+            z-index: 100;
+        }
+
+        .chat-sidebar.collapsed {
+            margin-left: -270px;
+        }
+
+        .sidebar-header {
+            padding: 12px 14px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .sidebar-brand {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 700;
+            font-size: 0.95rem;
+            color: #e6edf3;
+        }
+
+        .sidebar-close-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+            cursor: pointer;
+            display: none;
+        }
+
+        .sidebar-actions {
+            padding: 10px 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .btn-new-chat {
+            background: #238636;
+            color: white;
+            border: 1px solid #2ea043;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.2s ease;
+        }
+
+        .btn-new-chat:hover {
+            background: #2ea043;
+            transform: translateY(-1px);
+        }
+
+        .shortcut-kbd {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+            padding: 2px 5px;
+            font-size: 0.7rem;
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .sidebar-search-box {
+            position: relative;
+        }
+
+        .sidebar-search-input {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 0.82rem;
+            outline: none;
+        }
+
+        .sidebar-search-input:focus {
+            border-color: var(--accent-color);
+        }
+
+        .sidebar-chats-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+
+        .sidebar-group-title {
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-secondary);
+            padding: 8px 8px 3px 8px;
+            font-weight: 700;
+        }
+
+        .sidebar-chat-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 7px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            color: #c9d1d9;
+            font-size: 0.84rem;
+            transition: all 0.15s ease;
+            position: relative;
+            user-select: none;
+        }
+
+        .sidebar-chat-item:hover {
+            background: rgba(255, 255, 255, 0.06);
+            color: #ffffff;
+        }
+
+        .sidebar-chat-item.active {
+            background: rgba(59, 130, 246, 0.18);
+            color: #ffffff;
+            border: 1px solid rgba(59, 130, 246, 0.35);
+        }
+
+        .sidebar-chat-item-title {
+            flex: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-right: 6px;
+        }
+
+        .sidebar-chat-item-actions {
+            display: none;
+            gap: 4px;
+            align-items: center;
+        }
+
+        .sidebar-chat-item:hover .sidebar-chat-item-actions,
+        .sidebar-chat-item.active .sidebar-chat-item-actions {
+            display: flex;
+        }
+
+        .sidebar-chat-act-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 0.78rem;
+            padding: 2px 4px;
+            border-radius: 4px;
+        }
+
+        .sidebar-chat-act-btn:hover {
+            color: #ffffff;
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .sidebar-footer {
+            padding: 8px 12px;
+            border-top: 1px solid var(--border-color);
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        .btn-toggle-sidebar {
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 5px 9px;
+            border-radius: 6px;
+            font-size: 1rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            margin-right: 2px;
+        }
+
+        .btn-toggle-sidebar:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: #58a6ff;
+        }
+
+        /* ===== КОНТЕКСТНЫЙ БАР (CONTEXT METER + MAGIC BUTTON) ===== */
+        .context-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 6px 14px;
+            background: rgba(22, 27, 34, 0.85);
+            border: 1px solid var(--border-color);
+            border-radius: 8px 8px 0 0;
+            margin: 0 20px -1px 20px;
+            font-size: 0.78rem;
+            flex-wrap: wrap;
+            gap: 8px;
+            z-index: 5;
+        }
+
+        .context-bar-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex: 1;
+            min-width: 220px;
+        }
+
+        .context-meter-bg {
+            width: 130px;
+            height: 7px;
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 10px;
+            overflow: hidden;
+            position: relative;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .context-meter-fill {
+            height: 100%;
+            width: 0%;
+            background: #2ea043;
+            border-radius: 10px;
+            transition: width 0.3s ease, background 0.3s ease;
+        }
+
+        .context-meter-text {
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        .context-bar-right {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .auto-compact-label {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            user-select: none;
+            font-size: 0.75rem;
+        }
+
+        .btn-magic-compact {
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.25), rgba(59, 130, 246, 0.25));
+            border: 1px solid rgba(139, 92, 246, 0.5);
+            color: #e2d9fc;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 0.76rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            transition: all 0.2s ease;
+        }
+
+        .btn-magic-compact:hover {
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.4), rgba(59, 130, 246, 0.4));
+            color: #ffffff;
+            border-color: #a78bfa;
+            box-shadow: 0 0 10px rgba(139, 92, 246, 0.3);
+        }
+
+        .btn-magic-compact:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Карточка сжатого контекста (Summary Card) */
+        .summary-card {
+            background: rgba(139, 92, 246, 0.08);
+            border: 1px dashed rgba(139, 92, 246, 0.4);
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin: 12px 0;
+            font-size: 0.88rem;
+            line-height: 1.5;
+        }
+
+        .summary-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+            font-weight: 700;
+            color: #c4b5fd;
+            font-size: 0.88rem;
+        }
+
+        .summary-card-content {
+            color: #e6edf3;
+            white-space: pre-wrap;
+            font-size: 0.85rem;
+        }
+
+        @media (max-width: 768px) {
+            .chat-sidebar {
+                position: fixed;
+                left: 0;
+                top: 0;
+                bottom: 0;
+                box-shadow: 10px 0 25px rgba(0, 0, 0, 0.7);
+            }
+            .sidebar-close-btn {
+                display: block;
+            }
+            .context-bar {
+                margin: 0 10px -1px 10px;
+            }
+        }
     </style>
 </head>
 <body>
+    <!-- Боковая панель истории диалогов (в стиле ChatGPT / Claude) -->
+    <aside id="chatSidebar" class="chat-sidebar">
+        <div class="sidebar-header">
+            <div class="sidebar-title-row">
+                <span class="sidebar-logo">💬 Диалоги</span>
+                <button id="closeSidebarBtn" class="sidebar-close-btn" title="Закрыть">✕</button>
+            </div>
+            <button id="newChatBtn" class="btn-new-chat">
+                <span>➕ Новый диалог</span>
+                <span class="shortcut-kbd">Ctrl+B</span>
+            </button>
+            <div class="sidebar-search-box">
+                <input type="text" id="chatSearchInput" class="sidebar-search-input" placeholder="Поиск по диалогам...">
+            </div>
+        </div>
+
+        <div id="sidebarChatsList" class="sidebar-chats-list">
+            <!-- Список чатов с группировкой по дням -->
+        </div>
+
+        <div class="sidebar-footer">
+            <div style="font-size: 0.72rem; color: var(--text-secondary); text-align: center;">
+                💾 Хранилище: SQLite (локально)
+            </div>
+        </div>
+    </aside>
+
     <div class="main-container">
         <header>
+            <button id="toggleSidebarBtn" class="btn-toggle-sidebar" title="Скрыть/показать список диалогов (Ctrl+B)">☰</button>
             <div class="header-title">
                 <span class="status-dot"></span>
                 <span>Qwen AI Studio (Локально)</span>
@@ -1607,6 +1970,26 @@
             </div>
         </div>
 
+        <!-- Контекстный бар: шкала заполненности Claude + магическая кнопка сжатия -->
+        <div id="contextBar" class="context-bar">
+            <div class="context-bar-left">
+                <span title="Использовано токенов в контекстном окне">🧠 Контекст:</span>
+                <div class="context-meter-bg" title="Заполненность контекстного окна">
+                    <div id="contextMeterFill" class="context-meter-fill"></div>
+                </div>
+                <span id="contextMeterText" class="context-meter-text">0 / 32K (0%)</span>
+            </div>
+            <div class="context-bar-right">
+                <label class="auto-compact-label" title="Автоматически сжимать контекст при превышении 85% лимита">
+                    <input type="checkbox" id="autoCompactCheckbox" checked>
+                    <span>Авто-сжатие (>85%)</span>
+                </label>
+                <button id="magicCompactBtn" class="btn-magic-compact" title="Сжать историю диалога: извлечь главное (цели, решения, пути) и освободить токены без потери сути">
+                    🪄 Сжать контекст
+                </button>
+            </div>
+        </div>
+
         <div class="input-container">
             <textarea id="promptInput" placeholder="Напиши вопрос или попроси код (например: 'Напиши шаблон кнопки в HTML с градиентом')..." rows="1"></textarea>
             <button id="sendBtn" class="send-btn">Отправить</button>
@@ -1633,6 +2016,29 @@
         const dlProgressBar = document.getElementById('dlProgressBar');
         const installedModelsList = document.getElementById('installedModelsList');
         const toastNotify = document.getElementById('toastNotify');
+
+        // Боковая панель истории диалогов (ChatGPT/Claude Style)
+        const chatSidebar = document.getElementById('chatSidebar');
+        const toggleSidebarBtn = document.getElementById('toggleSidebarBtn');
+        const closeSidebarBtn = document.getElementById('closeSidebarBtn');
+        const newChatBtn = document.getElementById('newChatBtn');
+        const chatSearchInput = document.getElementById('chatSearchInput');
+        const sidebarChatsList = document.getElementById('sidebarChatsList');
+
+        // Контекстный бар (Context Meter + Magic Button)
+        const contextBar = document.getElementById('contextBar');
+        const contextMeterFill = document.getElementById('contextMeterFill');
+        const contextMeterText = document.getElementById('contextMeterText');
+        const autoCompactCheckbox = document.getElementById('autoCompactCheckbox');
+        const magicCompactBtn = document.getElementById('magicCompactBtn');
+
+        let currentChatId = null;
+        let allChatsCache = [];
+        let modelContextLimits = {};
+        let currentPromptTokens = 0;
+        let currentEvalTokens = 0;
+        let autoCompactEnabled = localStorage.getItem('auto_compact_enabled') !== '0';
+        let isCompacting = false;
 
         // Элемент переключения Веб-поиска (Интернет)
         const toggleWebBtn = document.getElementById('toggleWebBtn');
@@ -3107,6 +3513,10 @@
                 return;
             }
 
+            if (!currentChatId) {
+                await createNewChat();
+            }
+
             promptInput.value = '';
             sendBtn.disabled = true;
 
@@ -3249,6 +3659,7 @@ ${contextBlocks.join('\n\n')}
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
+                        chat_id: currentChatId,
                         model: selectedModel,
                         messages: messagesForOllama,
                         stream: true
@@ -3293,6 +3704,13 @@ ${contextBlocks.join('\n\n')}
                                 assistantUi.bubbleDiv.innerText = fullAnswer;
                                 chatMessages.scrollTop = chatMessages.scrollHeight;
                             }
+
+                            if (parsed.prompt_eval_count !== undefined) {
+                                currentPromptTokens = parsed.prompt_eval_count;
+                            }
+                            if (parsed.eval_count !== undefined) {
+                                currentEvalTokens = parsed.eval_count;
+                            }
                         } catch (err) {}
                     }
                 }
@@ -3308,6 +3726,12 @@ ${contextBlocks.join('\n\n')}
                         if (parsed.message && parsed.message.content) {
                             fullAnswer += parsed.message.content;
                             assistantUi.bubbleDiv.innerText = fullAnswer;
+                        }
+                        if (parsed.prompt_eval_count !== undefined) {
+                            currentPromptTokens = parsed.prompt_eval_count;
+                        }
+                        if (parsed.eval_count !== undefined) {
+                            currentEvalTokens = parsed.eval_count;
                         }
                     } catch (err) {}
                 }
@@ -3325,6 +3749,15 @@ ${contextBlocks.join('\n\n')}
                 chatHistory.push({ role: 'assistant', content: fullAnswer || fullThinking });
                 logMessage('INFO', `Ответ от [${selectedModel}] успешно получен.`);
 
+                const totalTokens = (currentPromptTokens || 0) + (currentEvalTokens || 0);
+                const maxCtx = getModelContextLimit(selectedModel);
+                if (totalTokens > 0) {
+                    updateContextMeter(totalTokens, maxCtx);
+                }
+                setTimeout(() => {
+                    loadChatsList(false);
+                }, 800);
+
             } catch (error) {
                 logMessage('ERROR', `Ошибка генерации ответа [${selectedModel}]: ${error.message}`);
                 assistantUi.bubbleDiv.innerText = 'Ошибка: ' + error.message;
@@ -3333,6 +3766,412 @@ ${contextBlocks.join('\n\n')}
                 promptInput.focus();
             }
         }
+
+        // ==========================================
+        // Управление сессиями диалогов и Память SQLite
+        // ==========================================
+
+        async function loadContextLimits() {
+            try {
+                const res = await fetch('/api/models/context-limits');
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data && data.limits) {
+                        modelContextLimits = data.limits;
+                    }
+                }
+            } catch (e) {}
+            updateContextMeter(0, getModelContextLimit(modelSelect.value));
+        }
+
+        function getModelContextLimit(modelName) {
+            if (!modelName) return 32768;
+            return modelContextLimits[modelName] || 32768;
+        }
+
+        function updateContextMeter(usedTokens, maxTokens) {
+            if (!maxTokens || maxTokens <= 0) maxTokens = 32768;
+            if (usedTokens === undefined || usedTokens === null) usedTokens = 0;
+            
+            const pct = Math.min(100, Math.round((usedTokens / maxTokens) * 100));
+            contextMeterFill.style.width = pct + '%';
+            
+            // Цветовая индикация в стиле светофора (🟢 🟡 🔴)
+            if (pct < 60) {
+                contextMeterFill.style.background = '#2ea043'; // Зеленый
+            } else if (pct < 85) {
+                contextMeterFill.style.background = '#d29922'; // Желтый / Янтарный
+            } else {
+                contextMeterFill.style.background = '#da3633'; // Красный
+            }
+
+            const formatK = (n) => {
+                if (n >= 1000) return (n / 1024).toFixed(1).replace('.0', '') + 'K';
+                return n.toString();
+            };
+
+            const remaining = Math.max(0, maxTokens - usedTokens);
+            const colorClass = pct >= 85 ? '#f85149' : (pct >= 60 ? '#e3b341' : '#56d364');
+            contextMeterText.innerHTML = `${formatK(usedTokens)} / ${formatK(maxTokens)} <span style="font-weight:700; color:${colorClass}">(${pct}%)</span> • Свободно: ${formatK(remaining)}`;
+
+            // Авто-сжатие при превышении 85% контекста
+            if (pct >= 85 && autoCompactEnabled && !isCompacting && currentChatId) {
+                logMessage('WARN', `[Context] Превышен порог 85% (${pct}%). Авто-сжатие диалога ${currentChatId}...`);
+                triggerMagicCompact(true);
+            }
+        }
+
+        async function loadChatsList(autoSelectFirst = true) {
+            try {
+                const res = await fetch('/api/chats');
+                if (res.ok) {
+                    const data = await res.json();
+                    allChatsCache = data.chats || [];
+                    renderSidebarChats();
+
+                    if (autoSelectFirst) {
+                        if (!currentChatId || !allChatsCache.find(c => c.id === currentChatId)) {
+                            if (allChatsCache.length > 0) {
+                                selectChat(allChatsCache[0].id);
+                            } else {
+                                createNewChat();
+                            }
+                        }
+                    }
+                }
+            } catch (err) {
+                logMessage('ERROR', `Ошибка загрузки списка диалогов: ${err.message}`);
+            }
+        }
+
+        function renderSidebarChats() {
+            if (!sidebarChatsList) return;
+            const search = (chatSearchInput ? chatSearchInput.value : '').toLowerCase().trim();
+            const filtered = allChatsCache.filter(c => !search || (c.title && c.title.toLowerCase().includes(search)));
+
+            if (filtered.length === 0) {
+                sidebarChatsList.innerHTML = '<div style="padding:15px; text-align:center; color:var(--text-secondary); font-size:0.8rem;">Диалоги не найдены</div>';
+                return;
+            }
+
+            const now = new Date();
+            const todayStr = now.toDateString();
+            const yesterday = new Date(now);
+            yesterday.setDate(now.getDate() - 1);
+            const yesterdayStr = yesterday.toDateString();
+            const weekAgo = new Date(now);
+            weekAgo.setDate(now.getDate() - 7);
+
+            const groups = {
+                today: [],
+                yesterday: [],
+                week: [],
+                older: []
+            };
+
+            filtered.forEach(chat => {
+                const chatDate = new Date(chat.updated_at || chat.created_at);
+                const chatDateStr = chatDate.toDateString();
+                if (chatDateStr === todayStr) {
+                    groups.today.push(chat);
+                } else if (chatDateStr === yesterdayStr) {
+                    groups.yesterday.push(chat);
+                } else if (chatDate >= weekAgo) {
+                    groups.week.push(chat);
+                } else {
+                    groups.older.push(chat);
+                }
+            });
+
+            let html = '';
+            const renderGroup = (title, chats) => {
+                if (!chats || chats.length === 0) return '';
+                let section = `<div class="sidebar-group-title">${title}</div>`;
+                chats.forEach(chat => {
+                    const isActive = chat.id === currentChatId ? 'active' : '';
+                    const escapedTitle = escapeHtml(chat.title || 'Новый диалог');
+                    const cleanJsTitle = escapedTitle.replace(/'/g, "\\'");
+                    section += `
+                        <div class="sidebar-chat-item ${isActive}" data-chat-id="${chat.id}" onclick="selectChat('${chat.id}')">
+                            <span class="sidebar-chat-item-title" title="${escapedTitle}">${escapedTitle}</span>
+                            <div class="sidebar-chat-item-actions">
+                                <button class="sidebar-chat-act-btn" onclick="renameChatPrompt('${chat.id}', '${cleanJsTitle}', event)" title="Переименовать">✏️</button>
+                                <button class="sidebar-chat-act-btn" onclick="deleteChatConfirm('${chat.id}', '${cleanJsTitle}', event)" title="Удалить">🗑️</button>
+                            </div>
+                        </div>
+                    `;
+                });
+                return section;
+            };
+
+            html += renderGroup('Сегодня', groups.today);
+            html += renderGroup('Вчера', groups.yesterday);
+            html += renderGroup('Предыдущие 7 дней', groups.week);
+            html += renderGroup('Ранее', groups.older);
+
+            sidebarChatsList.innerHTML = html;
+        }
+
+        async function selectChat(chatId) {
+            if (!chatId) return;
+            currentChatId = chatId;
+            renderSidebarChats();
+
+            if (window.innerWidth <= 768 && chatSidebar.classList.contains('open')) {
+                chatSidebar.classList.remove('open');
+            }
+
+            try {
+                const res = await fetch(`/api/chats/${chatId}`);
+                if (!res.ok) throw new Error('Ошибка загрузки данных диалога');
+                const data = await res.json();
+                const chat = data.chat;
+                const messages = data.messages || [];
+                const summary = data.summary;
+
+                if (chat && chat.model && modelSelect.querySelector(`option[value="${chat.model}"]`)) {
+                    modelSelect.value = chat.model;
+                }
+
+                chatMessages.innerHTML = '';
+                chatHistory = [
+                    { role: "system", content: "Ты полезный и умный ИИ-ассистент. Всегда отвечай на русском языке. Будь точен, вежлив и давай качественные примеры кода." }
+                ];
+
+                if (summary && summary.summary_text) {
+                    const sumDiv = document.createElement('div');
+                    sumDiv.className = 'summary-card';
+                    sumDiv.innerHTML = `
+                        <div class="summary-card-header">
+                            <span>🪄 Сжатый контекст (сохранено главное)</span>
+                            <span style="font-size:0.75rem; color:#a78bfa;">-${summary.saved_percent}% токенов</span>
+                        </div>
+                        <div class="summary-card-content">${escapeHtml(summary.summary_text)}</div>
+                    `;
+                    chatMessages.appendChild(sumDiv);
+
+                    chatHistory.push({
+                        role: 'system',
+                        content: `КРАТКАЯ ВЫЖИМКА ПРЕДЫДУЩЕГО КОНТЕКСТА БЕСЕДЫ:\n${summary.summary_text}`
+                    });
+                }
+
+                if (messages.length === 0 && !summary) {
+                    const welcomeDiv = document.createElement('div');
+                    welcomeDiv.className = 'message assistant';
+                    welcomeDiv.innerHTML = `
+                        <div class="message-header">
+                            <span>Qwen</span>
+                            <span class="model-badge">Система</span>
+                        </div>
+                        <div class="message-bubble">Привет! Я локальная нейросеть на твоем компьютере. Выбирай модель сверху или скачивай новые через кнопку «⚙️ Модели». Логи пишутся в файл app.log.</div>
+                    `;
+                    chatMessages.appendChild(welcomeDiv);
+                } else {
+                    let totalTokensInChat = 0;
+                    messages.forEach(msg => {
+                        if (msg.role === 'user') {
+                            const userMsgDiv = document.createElement('div');
+                            userMsgDiv.className = 'message user';
+                            userMsgDiv.innerHTML = `
+                                <div class="message-header">Вы</div>
+                                <div class="message-bubble">${escapeHtml(msg.content)}</div>
+                            `;
+                            chatMessages.appendChild(userMsgDiv);
+                            chatHistory.push({ role: 'user', content: msg.content });
+                        } else if (msg.role === 'assistant') {
+                            const assistDiv = document.createElement('div');
+                            assistDiv.className = 'message assistant';
+                            let thinkingHtml = '';
+                            if (msg.thinking) {
+                                thinkingHtml = `
+                                    <div class="think-container" style="display:block;">
+                                        <div class="think-toggle" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? 'block' : 'none'">
+                                            <span>💭 Рассуждения (нажми, чтобы скрыть/показать)</span>
+                                        </div>
+                                        <div class="think-content" style="display:none;">${escapeHtml(msg.thinking)}</div>
+                                    </div>
+                                `;
+                            }
+                            assistDiv.innerHTML = `
+                                <div class="message-header">
+                                    <span>Qwen</span>
+                                    <span class="model-badge">${escapeHtml(chat.model || 'qwen')}</span>
+                                </div>
+                                ${thinkingHtml}
+                                <div class="message-bubble">${escapeHtml(msg.content)}</div>
+                            `;
+                            chatMessages.appendChild(assistDiv);
+                            chatHistory.push({ role: 'assistant', content: msg.content });
+                        }
+                        totalTokensInChat += (msg.prompt_tokens || 0) + (msg.eval_tokens || 0);
+                    });
+
+                    const maxCtx = getModelContextLimit(modelSelect.value);
+                    if (totalTokensInChat === 0) {
+                        const totalChars = messages.reduce((sum, m) => sum + (m.content ? m.content.length : 0), 0);
+                        totalTokensInChat = Math.round(totalChars / 3);
+                    }
+                    updateContextMeter(totalTokensInChat, maxCtx);
+                }
+
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            } catch (err) {
+                logMessage('ERROR', `Ошибка выбора диалога ${chatId}: ${err.message}`);
+                showToast('Ошибка загрузки диалога: ' + err.message);
+            }
+        }
+
+        async function createNewChat() {
+            try {
+                const selectedModel = modelSelect.value || 'qwen3.5:9b';
+                const res = await fetch('/api/chats', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title: 'Новый диалог', model: selectedModel })
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    await loadChatsList(false);
+                    selectChat(data.chat.id);
+                    promptInput.focus();
+                    showToast('Создан новый диалог');
+                }
+            } catch (err) {
+                showToast('Ошибка создания диалога');
+            }
+        }
+
+        async function renameChatPrompt(chatId, oldTitle, e) {
+            if (e) e.stopPropagation();
+            const newTitle = prompt('Введите новое название диалога:', oldTitle);
+            if (!newTitle || newTitle.trim() === '' || newTitle === oldTitle) return;
+
+            try {
+                const res = await fetch(`/api/chats/${chatId}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title: newTitle.trim() })
+                });
+                if (res.ok) {
+                    const chat = allChatsCache.find(c => c.id === chatId);
+                    if (chat) chat.title = newTitle.trim();
+                    renderSidebarChats();
+                    showToast('Название диалога обновлено');
+                }
+            } catch (err) {
+                showToast('Ошибка переименования');
+            }
+        }
+
+        async function deleteChatConfirm(chatId, title, e) {
+            if (e) e.stopPropagation();
+            if (!confirm(`Удалить диалог "${title}" безвозвратно?`)) return;
+
+            try {
+                const res = await fetch(`/api/chats/${chatId}`, { method: 'DELETE' });
+                if (res.ok) {
+                    allChatsCache = allChatsCache.filter(c => c.id !== chatId);
+                    if (currentChatId === chatId) {
+                        currentChatId = null;
+                        if (allChatsCache.length > 0) {
+                            selectChat(allChatsCache[0].id);
+                        } else {
+                            createNewChat();
+                        }
+                    } else {
+                        renderSidebarChats();
+                    }
+                    showToast('Диалог удален');
+                }
+            } catch (err) {
+                showToast('Ошибка удаления диалога');
+            }
+        }
+
+        async function triggerMagicCompact(isAuto = false) {
+            if (!currentChatId || isCompacting) return;
+            isCompacting = true;
+            magicCompactBtn.disabled = true;
+            magicCompactBtn.innerHTML = '⏳ Сжатие...';
+
+            showToast(isAuto ? '⚡ Авто-сжатие контекста (>85%)...' : '🪄 Магическое сжатие контекста...');
+
+            try {
+                const res = await fetch(`/api/chats/${currentChatId}/compact`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await res.json();
+                if (res.ok && data.status === 'ok') {
+                    showToast(`✨ Контекст сжат: освобождено ${data.savedTokens.toLocaleString()} токенов (-${data.savedPercent}%)!`);
+                    logMessage('INFO', `[Compact] Успешно сжато: ${data.tokensBefore} -> ${data.tokensAfter} (-${data.savedPercent}%)`);
+                    await selectChat(currentChatId);
+                } else if (data.status === 'skipped') {
+                    showToast(data.message || 'Слишком мало сообщений для сжатия');
+                } else {
+                    showToast('Ошибка сжатия: ' + (data.error || 'Сбой'));
+                }
+            } catch (err) {
+                logMessage('ERROR', `Ошибка сжатия контекста: ${err.message}`);
+                showToast('Сбой сжатия: ' + err.message);
+            } finally {
+                isCompacting = false;
+                magicCompactBtn.disabled = false;
+                magicCompactBtn.innerHTML = '🪄 Сжать контекст';
+            }
+        }
+
+        // Слушатели событий боковой панели и контекстного бара
+        if (toggleSidebarBtn) {
+            toggleSidebarBtn.addEventListener('click', () => {
+                chatSidebar.classList.toggle('open');
+            });
+        }
+        if (closeSidebarBtn) {
+            closeSidebarBtn.addEventListener('click', () => {
+                chatSidebar.classList.remove('open');
+            });
+        }
+        if (newChatBtn) {
+            newChatBtn.addEventListener('click', () => {
+                createNewChat();
+            });
+        }
+        if (chatSearchInput) {
+            chatSearchInput.addEventListener('input', () => {
+                renderSidebarChats();
+            });
+        }
+        if (autoCompactCheckbox) {
+            autoCompactCheckbox.checked = autoCompactEnabled;
+            autoCompactCheckbox.addEventListener('change', () => {
+                autoCompactEnabled = autoCompactCheckbox.checked;
+                localStorage.setItem('auto_compact_enabled', autoCompactEnabled ? '1' : '0');
+                showToast(autoCompactEnabled ? '⚡ Авто-сжатие (>85%) включено' : '⚡ Авто-сжатие выключено');
+            });
+        }
+        if (magicCompactBtn) {
+            magicCompactBtn.addEventListener('click', () => {
+                triggerMagicCompact(false);
+            });
+        }
+        if (modelSelect) {
+            modelSelect.addEventListener('change', () => {
+                const maxCtx = getModelContextLimit(modelSelect.value);
+                updateContextMeter((currentPromptTokens || 0) + (currentEvalTokens || 0), maxCtx);
+            });
+        }
+        window.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && (e.key === 'b' || e.key === 'B')) {
+                e.preventDefault();
+                chatSidebar.classList.toggle('open');
+            }
+            if ((e.ctrlKey || e.metaKey) && (e.key === 'n' || e.key === 'N')) {
+                e.preventDefault();
+                createNewChat();
+            }
+        });
 
         function escapeHtml(text) {
             return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -3345,6 +4184,8 @@ ${contextBlocks.join('\n\n')}
             updateRagButtonUI();
             updateWebButtonUI();
             loadRagDocuments();
+            loadContextLimits();
+            loadChatsList(true);
 
             // Автопроверка новинок в Ollama Library при старте
             if (autoCheckUpdatesEnabled) {

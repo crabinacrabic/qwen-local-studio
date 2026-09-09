@@ -4,6 +4,7 @@ const { URL } = require('url');
 const fs = require('fs');
 const path = require('path');
 const { exec, spawn, execSync, execFile } = require('child_process');
+const db = require('./db.js');
 
 const PORT = 3000;
 const OLLAMA_PORT = 11434;
@@ -1939,7 +1940,395 @@ const server = http.createServer((req, res) => {
         return;
     }
 
-    // 10. Проксирование остальных запросов к Ollama (/api/chat, /api/pull, /api/delete и т.д.)
+    // Вспомогательная функция для генерации саммари (сжатия) через Ollama
+    function fetchOllamaSummary(model, promptText) {
+        return new Promise((resolve, reject) => {
+            const payload = JSON.stringify({
+                model: model,
+                messages: [
+                    { role: 'user', content: promptText }
+                ],
+                stream: false,
+                options: {
+                    temperature: 0.3,
+                    num_ctx: 16384
+                }
+            });
+
+            const reqSummary = http.request({
+                hostname: '127.0.0.1',
+                port: OLLAMA_PORT,
+                path: '/api/chat',
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Content-Length': Buffer.byteLength(payload)
+                }
+            }, (resSummary) => {
+                let data = '';
+                resSummary.on('data', chunk => { data += chunk; });
+                resSummary.on('end', () => {
+                    try {
+                        const json = JSON.parse(data);
+                        if (json.message && json.message.content) {
+                            resolve(json.message.content.trim());
+                        } else if (json.error) {
+                            reject(new Error(json.error));
+                        } else {
+                            reject(new Error('Пустой ответ от модели'));
+                        }
+                    } catch (e) {
+                        reject(e);
+                    }
+                });
+            });
+
+            reqSummary.on('error', reject);
+            reqSummary.write(payload);
+            reqSummary.end();
+        });
+    }
+
+    // 10. Лимиты контекстного окна моделей (Context Window Info)
+    if (req.url === '/api/models/context-limits' && req.method === 'GET') {
+        const limitsMap = {
+            'qwen3.5:9b': 32768,
+            'qwen3.5:4b': 32768,
+            'qwen3.5:2b': 32768,
+            'qwen3:8b': 32768,
+            'qwen3:4b': 32768,
+            'qwen3:1.7b': 32768,
+            'qwen3:0.6b': 32768,
+            'qwen3-vl:4b': 16384,
+            'qwen3-embedding:0.6b': 32768
+        };
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({
+            status: 'ok',
+            defaultNumCtx: 32768,
+            recommendedNumCtx: 32768,
+            limits: limitsMap,
+            models: {
+                'qwen3.5:9b': { num_ctx: 32768, max_arch: 262144 },
+                'qwen3.5:4b': { num_ctx: 32768, max_arch: 262144 },
+                'qwen3.5:2b': { num_ctx: 32768, max_arch: 262144 },
+                'qwen3:8b': { num_ctx: 32768, max_arch: 131072 },
+                'qwen3:4b': { num_ctx: 32768, max_arch: 131072 },
+                'qwen3:1.7b': { num_ctx: 32768, max_arch: 32768 },
+                'qwen3:0.6b': { num_ctx: 32768, max_arch: 32768 },
+                'qwen3-vl:4b': { num_ctx: 16384, max_arch: 32768 },
+                'qwen3-embedding:0.6b': { num_ctx: 32768, max_arch: 32768 }
+            }
+        }));
+        return;
+    }
+
+    // 11. База данных SQLite: Список всех диалогов
+    if (req.url === '/api/chats' && req.method === 'GET') {
+        try {
+            let chats = db.getChats();
+            if (chats.length === 0) {
+                const initialChat = db.createChat('Добро пожаловать в Qwen Studio', 'qwen3.5:9b');
+                db.addMessage(initialChat.id, 'assistant', 'Привет! Я локальная нейросеть на твоем компьютере. Выбирай модель, отправляй запросы или загружай файлы в базу знаний.');
+                chats = db.getChats();
+            }
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ status: 'ok', chats }));
+        } catch (err) {
+            writeLog('ERROR', `[DB] Ошибка получения чатов: ${err.message}`);
+            res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ error: err.message }));
+        }
+        return;
+    }
+
+    // 12. База данных SQLite: Создание нового диалога
+    if (req.url === '/api/chats' && req.method === 'POST') {
+        readJsonBody(req, (err, body) => {
+            try {
+                const title = (body && body.title) ? String(body.title).trim() : 'Новый диалог';
+                const model = (body && body.model) ? String(body.model).trim() : 'qwen3.5:9b';
+                const chat = db.createChat(title, model);
+                writeLog('INFO', `[DB] Создан новый диалог: "${chat.title}" (${chat.id})`);
+                res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ status: 'ok', chat }));
+            } catch (createErr) {
+                writeLog('ERROR', `[DB] Ошибка создания чата: ${createErr.message}`);
+                res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ error: createErr.message }));
+            }
+        });
+        return;
+    }
+
+    // 13. База данных SQLite: Получение конкретного диалога и сообщений
+    if (req.url.match(/^\/api\/chats\/[a-zA-Z0-9_-]+$/) && req.method === 'GET') {
+        const chatId = req.url.split('/')[3];
+        try {
+            const chat = db.getChatById(chatId);
+            if (!chat) {
+                res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ error: 'Диалог не найден' }));
+                return;
+            }
+            const messages = db.getMessages(chatId, true);
+            const summary = db.getLatestSummary(chatId);
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ status: 'ok', chat, messages, summary }));
+        } catch (err) {
+            writeLog('ERROR', `[DB] Ошибка загрузки диалога ${chatId}: ${err.message}`);
+            res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ error: err.message }));
+        }
+        return;
+    }
+
+    // 14. База данных SQLite: Переименование / закрепление диалога
+    if (req.url.match(/^\/api\/chats\/[a-zA-Z0-9_-]+$/) && req.method === 'PATCH') {
+        const chatId = req.url.split('/')[3];
+        readJsonBody(req, (err, body) => {
+            try {
+                const updated = db.updateChat(chatId, body || {});
+                if (!updated) {
+                    res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ error: 'Диалог не найден' }));
+                    return;
+                }
+                res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ status: 'ok', chat: updated }));
+            } catch (updateErr) {
+                res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ error: updateErr.message }));
+            }
+        });
+        return;
+    }
+
+    // 15. База данных SQLite: Удаление диалога
+    if (req.url.match(/^\/api\/chats\/[a-zA-Z0-9_-]+$/) && req.method === 'DELETE') {
+        const chatId = req.url.split('/')[3];
+        try {
+            const deleted = db.deleteChat(chatId);
+            writeLog('INFO', `[DB] Диалог ${chatId} удален.`);
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ status: 'ok', deleted }));
+        } catch (err) {
+            writeLog('ERROR', `[DB] Ошибка удаления диалога ${chatId}: ${err.message}`);
+            res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ error: err.message }));
+        }
+        return;
+    }
+
+    // 16. Волшебная кнопка: Интеллектуальное сжатие контекста диалога
+    if (req.url.match(/^\/api\/chats\/[a-zA-Z0-9_-]+\/compact$/) && req.method === 'POST') {
+        const chatId = req.url.split('/')[3];
+        const chat = db.getChatById(chatId);
+        if (!chat) {
+            res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ error: 'Диалог не найден' }));
+            return;
+        }
+
+        const uncompacted = db.getMessages(chatId, false);
+        if (uncompacted.length < 3) {
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({
+                status: 'skipped',
+                message: 'В диалоге слишком мало сообщений для сжатия (минимум 3).'
+            }));
+            return;
+        }
+
+        const transcript = uncompacted.map(m => {
+            const roleName = m.role === 'user' ? 'Пользователь' : (m.role === 'summary' ? 'Предыдущая выжимка' : 'Ассистент');
+            return `${roleName}: ${m.content}`;
+        }).join('\n\n');
+
+        const tokensBefore = uncompacted.reduce((acc, m) => acc + (m.prompt_tokens || 0) + (m.eval_tokens || 0), 0) || Math.round(transcript.length / 3);
+
+        const summarizerPrompt = `Ты — высокоточный архиватор контекста для искусственного интеллекта.
+Твоя задача — сжать историю переписки в плотную структурированную выжимку, отбросив все приветствия, вежливости и воду.
+
+ОБЯЗАТЕЛЬНАЯ СТРУКТУРА ВЫЖИМКИ:
+🎯 ЦЕЛЬ: что именно делает пользователь
+💡 ПРИНЯТЫЕ РЕШЕНИЯ: архитектура, технологии, алгоритмы, согласованный стек
+📁 СУЩНОСТИ И ПУТИ: имена файлов, функций, портов, конфигураций
+⚡ ТЕКУЩИЙ СТАТУС И СЛЕДУЮЩИЙ ШАГ: на чем конкретно остановились
+
+ПЕРЕПИСКА ДЛЯ СЖАТИЯ:
+${transcript.substring(0, 14000)}
+
+Сформируй плотную выжимку на русском языке строго по структуре выше:`;
+
+        writeLog('INFO', `[Compactor] Запуск сжатия диалога ${chatId} (${uncompacted.length} сообщений, ~${tokensBefore} токенов)...`);
+
+        const fastModel = 'qwen3:0.6b';
+        fetchOllamaSummary(fastModel, summarizerPrompt).then(summaryText => {
+            const tokensAfter = Math.round(summaryText.length / 3);
+            const savedTokens = Math.max(0, tokensBefore - tokensAfter);
+            const savedPercent = tokensBefore > 0 ? Math.round((savedTokens / tokensBefore) * 100) : 0;
+
+            db.markMessagesCompacted(chatId);
+            db.addSummary(chatId, summaryText, tokensBefore, tokensAfter, uncompacted.length);
+
+            writeLog('INFO', `[Compactor] Диалог ${chatId} успешно сжат: освобождено ${savedTokens} токенов (${savedPercent}% сжатия)`);
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({
+                status: 'ok',
+                summary: summaryText,
+                tokensBefore: tokensBefore,
+                tokensAfter: tokensAfter,
+                savedTokens: savedTokens,
+                savedPercent: savedPercent,
+                compactedCount: uncompacted.length
+            }));
+        }).catch(err => {
+            writeLog('WARN', `[Compactor] Сбой сжатия через ${fastModel}: ${err.message}. Пробуем модель чата ${chat.model}...`);
+            fetchOllamaSummary(chat.model, summarizerPrompt).then(summaryText => {
+                const tokensAfter = Math.round(summaryText.length / 3);
+                const savedTokens = Math.max(0, tokensBefore - tokensAfter);
+                const savedPercent = tokensBefore > 0 ? Math.round((savedTokens / tokensBefore) * 100) : 0;
+
+                db.markMessagesCompacted(chatId);
+                db.addSummary(chatId, summaryText, tokensBefore, tokensAfter, uncompacted.length);
+
+                res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({
+                    status: 'ok',
+                    summary: summaryText,
+                    tokensBefore: tokensBefore,
+                    tokensAfter: tokensAfter,
+                    savedTokens: savedTokens,
+                    savedPercent: savedPercent,
+                    compactedCount: uncompacted.length
+                }));
+            }).catch(fallbackErr => {
+                writeLog('ERROR', `[Compactor] Сбой сжатия: ${fallbackErr.message}`);
+                res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ error: fallbackErr.message }));
+            });
+        });
+        return;
+    }
+
+    // 17. Чат с поддержкой сохранения сессий в SQLite и подсчетом токенов
+    if (req.url === '/api/chat' && req.method === 'POST') {
+        readJsonBody(req, (err, payload) => {
+            if (err || !payload) {
+                res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ error: 'Некорректный JSON запрос' }));
+                return;
+            }
+
+            const chatId = payload.chat_id || null;
+            const messages = payload.messages || [];
+            const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
+
+            // Сохраняем сообщение пользователя в SQLite
+            if (chatId && lastUserMsg) {
+                try {
+                    if (!db.getChatById(chatId)) {
+                        db.createChat('Новый диалог', payload.model || 'qwen3.5:9b');
+                    }
+                    db.addMessage(chatId, 'user', lastUserMsg.content);
+                } catch (dbErr) {
+                    writeLog('WARN', `[DB] Ошибка сохранения user сообщения: ${dbErr.message}`);
+                }
+            }
+
+            // Удаляем chat_id перед передачей в Ollama (Ollama его не ожидает)
+            delete payload.chat_id;
+
+            // Обеспечиваем широкий лимит контекстного окна (32K по умолчанию под RX 6600)
+            if (!payload.options) payload.options = {};
+            if (!payload.options.num_ctx) {
+                payload.options.num_ctx = 32768;
+            }
+
+            const ollamaPayload = JSON.stringify(payload);
+            const proxyReq = http.request({
+                hostname: '127.0.0.1',
+                port: OLLAMA_PORT,
+                path: '/api/chat',
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Content-Length': Buffer.byteLength(ollamaPayload)
+                }
+            }, (proxyRes) => {
+                res.writeHead(proxyRes.statusCode, {
+                    'Content-Type': proxyRes.headers['content-type'] || 'application/x-ndjson',
+                    'Transfer-Encoding': 'chunked'
+                });
+
+                let fullContent = '';
+                let fullThinking = '';
+                let promptEvalCount = 0;
+                let evalCount = 0;
+
+                proxyRes.on('data', (chunk) => {
+                    res.write(chunk);
+
+                    const str = chunk.toString();
+                    const lines = str.split('\n');
+                    for (const line of lines) {
+                        if (!line.trim()) continue;
+                        try {
+                            const parsed = JSON.parse(line);
+                            if (parsed.message) {
+                                if (parsed.message.content) fullContent += parsed.message.content;
+                                if (parsed.message.thinking) fullThinking += parsed.message.thinking;
+                            }
+                            if (parsed.prompt_eval_count) promptEvalCount = parsed.prompt_eval_count;
+                            if (parsed.eval_count) evalCount = parsed.eval_count;
+                        } catch (e) {}
+                    }
+                });
+
+                proxyRes.on('end', () => {
+                    res.end();
+
+                    // Сохраняем ответ ассистента и метрики токенов в SQLite
+                    if (chatId && (fullContent || fullThinking)) {
+                        try {
+                            db.addMessage(chatId, 'assistant', fullContent, fullThinking, promptEvalCount, evalCount);
+
+                            // Авто-название для чата, если оно все еще "Новый диалог"
+                            const currentChat = db.getChatById(chatId);
+                            if (currentChat && currentChat.title === 'Новый диалог' && lastUserMsg) {
+                                let cleanTitle = lastUserMsg.content.trim().replace(/[#*`\n]/g, ' ');
+                                if (cleanTitle.length > 36) {
+                                    cleanTitle = cleanTitle.substring(0, 36).trim() + '...';
+                                }
+                                if (cleanTitle) {
+                                    db.updateChat(chatId, { title: cleanTitle });
+                                    writeLog('INFO', `[DB] Чат ${chatId} автоматически переименован в: "${cleanTitle}"`);
+                                }
+                            }
+                        } catch (dbErr) {
+                            writeLog('WARN', `[DB] Ошибка сохранения assistant сообщения: ${dbErr.message}`);
+                        }
+                    }
+                });
+            });
+
+            proxyReq.on('error', (err) => {
+                writeLog('ERROR', `Ошибка связи с Ollama (/api/chat): ${err.message}`);
+                if (err.code === 'ECONNREFUSED') {
+                    ensureOllamaRunning();
+                }
+                res.writeHead(502, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ error: 'Служба Ollama еще запускается. Повторите запрос через 3 сек.' }));
+            });
+
+            proxyReq.write(ollamaPayload);
+            proxyReq.end();
+        });
+        return;
+    }
+
+    // 18. Проксирование остальных запросов к Ollama (/api/pull, /api/delete, /api/embeddings и т.д.)
     if (req.url.startsWith('/api/')) {
         writeLog('DEBUG', `Proxy ${req.method} ${req.url}`);
 
