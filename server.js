@@ -3,7 +3,7 @@ const https = require('https');
 const { URL } = require('url');
 const fs = require('fs');
 const path = require('path');
-const { exec, spawn, execSync } = require('child_process');
+const { exec, spawn, execSync, execFile } = require('child_process');
 
 const PORT = 3000;
 const OLLAMA_PORT = 11434;
@@ -540,8 +540,118 @@ async function performWebSearch(query, maxResults = 5, deepFetch = true) {
 }
 
 // ==========================================
-// Модуль проверки обновлений моделей Qwen
+// Модуль сканирования железа ПК (Hardware Advisor)
 // ==========================================
+
+let hardwareSpecsCache = {
+    timestamp: 0,
+    data: null
+};
+
+function getSystemHardwareSpecs() {
+    return new Promise((resolve) => {
+        const now = Date.now();
+        if (hardwareSpecsCache.data && (now - hardwareSpecsCache.timestamp < 30 * 1000)) {
+            return resolve(hardwareSpecsCache.data);
+        }
+
+        const psCmd = `
+$vramBytes = 0
+$reg = Get-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e968-e325-11ce-bfc1-08002be10318}\\0*' -ErrorAction SilentlyContinue | Where-Object { $_.'HardwareInformation.qwMemorySize' } | Select-Object -First 1
+if ($reg) { $vramBytes = $reg.'HardwareInformation.qwMemorySize' }
+
+$gpu = Get-CimInstance Win32_VideoController | Select-Object -First 1 Name, AdapterRAM
+if ($vramBytes -eq 0 -and $gpu.AdapterRAM) { $vramBytes = $gpu.AdapterRAM }
+
+$os = Get-CimInstance Win32_OperatingSystem | Select-Object TotalVisibleMemorySize, FreePhysicalMemory
+$disk = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='C:'" | Select-Object Size, FreeSpace
+$cpu = Get-CimInstance Win32_Processor | Select-Object -First 1 Name
+
+[PSCustomObject]@{
+    gpuName = if ($gpu.Name) { $gpu.Name.Trim() } else { 'GPU' }
+    vramBytes = [int64]$vramBytes
+    vramGB = [math]::Round($vramBytes / 1GB, 1)
+    ramTotalGB = [math]::Round($os.TotalVisibleMemorySize * 1KB / 1GB, 1)
+    ramFreeGB = [math]::Round($os.FreePhysicalMemory * 1KB / 1GB, 1)
+    diskTotalGB = [math]::Round($disk.Size / 1GB, 1)
+    diskFreeGB = [math]::Round($disk.FreeSpace / 1GB, 1)
+    cpuName = if ($cpu.Name) { $cpu.Name.Trim() } else { 'CPU' }
+} | ConvertTo-Json -Compress
+        `.trim();
+
+        execFile('powershell', ['-NoProfile', '-Command', psCmd], { timeout: 6000 }, (err, stdout) => {
+            if (err || !stdout) {
+                const fallback = {
+                    gpuName: 'AMD Radeon RX 6600',
+                    vramGB: 8.0,
+                    ramTotalGB: 16.0,
+                    ramFreeGB: 9.0,
+                    diskTotalGB: 475.0,
+                    diskFreeGB: 290.0,
+                    cpuName: 'AMD Ryzen 7 5700X',
+                    fallback: true
+                };
+                return resolve(fallback);
+            }
+            try {
+                const specs = JSON.parse(stdout.trim());
+                hardwareSpecsCache = {
+                    timestamp: now,
+                    data: specs
+                };
+                resolve(specs);
+            } catch (parseErr) {
+                resolve({
+                    gpuName: 'AMD Radeon RX 6600',
+                    vramGB: 8.0,
+                    ramTotalGB: 16.0,
+                    ramFreeGB: 9.0,
+                    diskTotalGB: 475.0,
+                    diskFreeGB: 290.0,
+                    cpuName: 'AMD Ryzen 7 5700X',
+                    fallback: true
+                });
+            }
+        });
+    });
+}
+
+// ==========================================
+// Модуль классификации моделей, дат и преемственности
+// ==========================================
+
+const MONTH_NAMES_RU = {
+    'jan': 'Январь', 'feb': 'Февраль', 'mar': 'Март', 'apr': 'Апрель',
+    'may': 'Май', 'jun': 'Июнь', 'jul': 'Июль', 'aug': 'Август',
+    'sep': 'Сентябрь', 'oct': 'Октябрь', 'nov': 'Ноябрь', 'dec': 'Декабрь'
+};
+
+const OLLAMA_DATES_CACHE = {
+    timestamp: 0,
+    families: [],
+    dates: {
+        'qwen3.8-flash-next': 'Сентябрь 2026',
+        'qwen3.6': 'Сентябрь 2026',
+        'qwen3.5': 'Сентябрь 2026',
+        'qwen3.8': 'Август 2026',
+        'qwen3-vl': 'Октябрь 2025',
+        'qwen3-embedding': 'Сентябрь 2025',
+        'qwen3-next': 'Декабрь 2025',
+        'qwen3': 'Октябрь 2025',
+        'qwen2.5': 'Сентябрь 2024',
+        'qwen3-coder': 'Сентябрь 2025'
+    }
+};
+
+function parseOllamaDate(rawDateStr) {
+    if (!rawDateStr) return null;
+    const m = rawDateStr.match(/([A-Za-z]{3})\s+([0-9]{1,2}),?\s+([0-9]{4})/);
+    if (m) {
+        const mon = MONTH_NAMES_RU[m[1].toLowerCase()] || m[1];
+        return `${mon} ${m[3]}`;
+    }
+    return rawDateStr;
+}
 
 let updateCheckCache = {
     timestamp: 0,
@@ -574,6 +684,11 @@ function getLocalOllamaModels() {
 
 function fetchOllamaQwenLibrary() {
     return new Promise((resolve) => {
+        const now = Date.now();
+        if (OLLAMA_DATES_CACHE.families.length > 0 && (now - OLLAMA_DATES_CACHE.timestamp < 15 * 60 * 1000)) {
+            return resolve(OLLAMA_DATES_CACHE);
+        }
+
         const req = https.get('https://ollama.com/search?q=qwen', {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
@@ -584,19 +699,200 @@ function fetchOllamaQwenLibrary() {
             res.on('data', c => data += c);
             res.on('end', () => {
                 const found = [];
-                const matches = data.match(/href="\/library\/([^"]+)"/g) || [];
-                for (const m of matches) {
-                    const name = m.replace('href="/library/', '').replace('"', '').trim().toLowerCase();
-                    if (name.includes('qwen') && !found.includes(name)) {
-                        found.push(name);
+                const items = data.match(/<li[\s\S]*?<\/li>/gi) || [];
+                for (const it of items) {
+                    const nameMatch = it.match(/href="\/library\/([^"/]+)"/);
+                    if (!nameMatch) continue;
+                    const family = nameMatch[1].trim().toLowerCase();
+                    if (family.includes('qwen') && !found.includes(family)) {
+                        found.push(family);
+                    }
+                    const titleMatch = it.match(/title="([A-Za-z]{3}\s+[0-9]{1,2},\s+[0-9]{4}[^"]*)"/);
+                    if (titleMatch) {
+                        const parsed = parseOllamaDate(titleMatch[1]);
+                        if (parsed) {
+                            OLLAMA_DATES_CACHE.dates[family] = parsed;
+                        }
                     }
                 }
-                resolve(found);
+                if (found.length > 0) {
+                    OLLAMA_DATES_CACHE.families = found;
+                }
+                OLLAMA_DATES_CACHE.timestamp = now;
+                resolve(OLLAMA_DATES_CACHE);
             });
         });
-        req.on('error', () => resolve([]));
-        req.on('timeout', () => { req.destroy(); resolve([]); });
+        req.on('error', () => resolve(OLLAMA_DATES_CACHE));
+        req.on('timeout', () => { req.destroy(); resolve(OLLAMA_DATES_CACHE); });
     });
+}
+
+function classifyModel(modelName, sizeBytes = 0, hwSpecs = null) {
+    const name = (modelName || '').toLowerCase();
+    let modelClass = 'chat';
+    let className = '💬 Чат и логика';
+    let tier = 'flagship';
+    let tierName = '⚡ Флагман (8 GB GPU)';
+    let generation = '3.0';
+    let releaseDate = '2025';
+    let lineage = '';
+    let approxVramGB = 5.0;
+
+    if (name.includes('embed')) {
+        modelClass = 'embedding';
+        className = '⚡ Эмбеддинги (RAG)';
+        if (name.includes('0.6b')) {
+            tier = 'light';
+            tierName = '🪶 Ультралегкий';
+            approxVramGB = 0.6;
+        } else {
+            tier = 'flagship';
+            tierName = '⚡ Продвинутый';
+            approxVramGB = 4.0;
+        }
+        generation = '3.0';
+        releaseDate = OLLAMA_DATES_CACHE.dates['qwen3-embedding'] || 'Сентябрь 2025';
+        lineage = 'Официальные эмбеддинги Qwen для базы знаний (контекст 32K)';
+    } else if (name.includes('-vl') || name.includes('vl:')) {
+        modelClass = 'vision';
+        className = '👁️ Зрение (Vision)';
+        if (name.includes('2b')) {
+            tier = 'light';
+            tierName = '🪶 Компактный';
+            approxVramGB = 1.8;
+        } else if (name.includes('4b')) {
+            tier = 'balanced';
+            tierName = '🚀 Сбалансированный';
+            approxVramGB = 3.3;
+        } else if (name.includes('8b')) {
+            tier = 'flagship';
+            tierName = '⚡ Флагман';
+            approxVramGB = 6.5;
+        } else {
+            tier = 'expert';
+            tierName = '🧠 Экспертный';
+            approxVramGB = 18.0;
+        }
+        generation = '3.0';
+        releaseDate = OLLAMA_DATES_CACHE.dates['qwen3-vl'] || 'Октябрь 2025';
+        lineage = 'Мультимодальное зрение: анализ фото, скриншотов и схем';
+    } else if (name.includes('coder')) {
+        modelClass = 'coder';
+        className = '💻 Кодинг';
+        if (name.includes('1.5b') || name.includes('3b')) {
+            tier = 'light';
+            tierName = '🪶 Компактный';
+            approxVramGB = 2.0;
+        } else if (name.includes('7b')) {
+            tier = 'flagship';
+            tierName = '⚡ Флагман';
+            approxVramGB = 4.7;
+        } else if (name.includes('14b')) {
+            tier = 'flagship';
+            tierName = '⚡ Продвинутый';
+            approxVramGB = 9.5;
+        } else {
+            tier = 'expert';
+            tierName = '🧠 Экспертный';
+            approxVramGB = 18.0;
+        }
+        generation = name.includes('qwen3') ? '3.0' : '2.5';
+        releaseDate = name.includes('qwen3') ? (OLLAMA_DATES_CACHE.dates['qwen3-coder'] || 'Сентябрь 2025') : (OLLAMA_DATES_CACHE.dates['qwen2.5'] || 'Сентябрь 2024');
+        lineage = 'Специализированная модель для разработки и рефакторинга';
+    } else {
+        modelClass = 'chat';
+        className = '💬 Чат и логика';
+
+        if (name.includes('0.5b') || name.includes('0.6b') || name.includes('1.5b') || name.includes('1.7b') || name.includes(':2b') || name.includes('0.8b')) {
+            tier = 'light';
+            tierName = '🪶 Ультралегкий';
+            approxVramGB = 1.8;
+        } else if (name.includes(':3b') || name.includes(':4b')) {
+            tier = 'balanced';
+            tierName = '🚀 Сбалансированный';
+            approxVramGB = 3.4;
+        } else if (name.includes(':7b') || name.includes(':8b') || name.includes(':9b') || name.includes(':14b')) {
+            tier = 'flagship';
+            tierName = '⚡ Флагман';
+            approxVramGB = 6.6;
+        } else {
+            tier = 'expert';
+            tierName = '🧠 Экспертный';
+            approxVramGB = 18.0;
+        }
+
+        if (name.startsWith('qwen3.8-flash-next')) {
+            generation = '3.8-Next';
+            releaseDate = OLLAMA_DATES_CACHE.dates['qwen3.8-flash-next'] || 'Сентябрь 2026';
+            lineage = 'Экспериментальный preview будущего поколения Qwen4';
+        } else if (name.startsWith('qwen3.8')) {
+            generation = '3.8';
+            releaseDate = OLLAMA_DATES_CACHE.dates['qwen3.8'] || 'Август 2026';
+            lineage = 'Тяжелый флагман с глубоким reasoning (2026)';
+        } else if (name.startsWith('qwen3.6')) {
+            generation = '3.6';
+            releaseDate = OLLAMA_DATES_CACHE.dates['qwen3.6'] || 'Сентябрь 2026';
+            lineage = 'Поколение 3.6 (Сентябрь 2026)';
+        } else if (name.startsWith('qwen3.5')) {
+            generation = '3.5';
+            releaseDate = OLLAMA_DATES_CACHE.dates['qwen3.5'] || 'Сентябрь 2026';
+            if (tier === 'flagship') lineage = 'Преемник Qwen3 8B (Поколение 3.5, 2026)';
+            else if (tier === 'balanced') lineage = 'Преемник Qwen3 4B (Поколение 3.5, 2026)';
+            else lineage = 'Преемник Qwen3 1.7B (Поколение 3.5, 2026)';
+        } else if (name.startsWith('qwen3')) {
+            generation = '3.0';
+            releaseDate = OLLAMA_DATES_CACHE.dates['qwen3'] || 'Октябрь 2025';
+            lineage = 'Классическое поколение Qwen3 (Октябрь 2025)';
+        } else if (name.startsWith('qwen2.5')) {
+            generation = '2.5';
+            releaseDate = OLLAMA_DATES_CACHE.dates['qwen2.5'] || 'Сентябрь 2024';
+            lineage = 'Предыдущее поколение Qwen2.5 (Сентябрь 2024)';
+        }
+    }
+
+    if (sizeBytes > 0) {
+        approxVramGB = Math.max(approxVramGB, parseFloat((sizeBytes / 1024 / 1024 / 1024).toFixed(1)));
+    }
+
+    const vramLimit = hwSpecs && hwSpecs.vramGB ? hwSpecs.vramGB : 8.0;
+    const ramLimit = hwSpecs && hwSpecs.ramTotalGB ? hwSpecs.ramTotalGB : 16.0;
+
+    let compatibility = {
+        status: 'gpu_ready',
+        color: '#2ea043',
+        badge: '🟢 100% GPU',
+        text: `Влезает в видеопамять (${vramLimit} GB VRAM) — максимальная скорость`
+    };
+
+    if (approxVramGB > (vramLimit - 0.5)) {
+        if (approxVramGB <= (ramLimit - 2.0)) {
+            compatibility = {
+                status: 'ram_offload',
+                color: '#d29922',
+                badge: '🟡 RAM Offload',
+                text: `Требует оперативную память (${ramLimit} GB RAM) — умеренная скорость`
+            };
+        } else {
+            compatibility = {
+                status: 'oom_risk',
+                color: '#da3633',
+                badge: '🔴 Недостаточно памяти',
+                text: 'Слишком тяжелая модель для текущей конфигурации'
+            };
+        }
+    }
+
+    return {
+        class: modelClass,
+        className: className,
+        tier: tier,
+        tierName: tierName,
+        generation: generation,
+        releaseDate: releaseDate,
+        lineage: lineage,
+        approxVramGB: approxVramGB,
+        compatibility: compatibility
+    };
 }
 
 async function checkModelUpdates(forceRefresh = false) {
@@ -606,47 +902,81 @@ async function checkModelUpdates(forceRefresh = false) {
     }
 
     const installed = await getLocalOllamaModels();
-    const libraryFamilies = await fetchOllamaQwenLibrary();
+    const libData = await fetchOllamaQwenLibrary();
+    const libraryFamilies = libData.families || [];
     const installedNames = installed.map(m => m.name.toLowerCase());
+    const hwSpecs = await getSystemHardwareSpecs();
     const updates = [];
 
-    // Правила поколенческих обновлений под RX 6600 (8 GB VRAM)
+    // Правила поколенческих обновлений внутри классов и подклассов мощности
     const upgradeRules = [
         {
             check: (name) => name.startsWith('qwen3:8b') || name.startsWith('qwen2.5:7b') || name.startsWith('qwen2.5:8b'),
+            modelClass: 'chat',
+            className: '💬 Чат и логика',
+            tier: 'flagship',
+            tierName: '⚡ ФЛАГМАН (8 GB GPU)',
             targetFamily: 'qwen3.5',
             targetTag: 'qwen3.5:9b',
             title: 'Qwen3.5 9B (Новый флагман)',
             sizeApprox: '~6.6 GB',
+            oldGeneration: 'Qwen3 8B (Октябрь 2025)',
+            newGeneration: 'Qwen3.5 9B (Сентябрь 2026)',
+            targetReleaseDate: OLLAMA_DATES_CACHE.dates['qwen3.5'] || 'Сентябрь 2026',
+            evolution: 'Qwen3 8B (Окт 2025) ➔ Qwen3.5 9B (Сент 2026) ✨',
             description: 'Новейшая архитектура: контекст 256K, глубокое мышление (<thought>), нативная мультимодальность. Заметно умнее первого поколения Qwen3 8B.',
-            vramFit: '🟢 Идеально для 8 GB VRAM'
+            vramFit: '🟢 100% GPU (Идеально под RX 6600 8 GB)'
         },
         {
             check: (name) => name.startsWith('qwen3:4b') || name.startsWith('qwen2.5:3b'),
+            modelClass: 'chat',
+            className: '💬 Чат и логика',
+            tier: 'balanced',
+            tierName: '🚀 СБАЛАНСИРОВАННЫЙ',
             targetFamily: 'qwen3.5',
             targetTag: 'qwen3.5:4b',
             title: 'Qwen3.5 4B (Сверхбыстрая)',
             sizeApprox: '~3.4 GB',
+            oldGeneration: 'Qwen3 4B (Октябрь 2025)',
+            newGeneration: 'Qwen3.5 4B (Сентябрь 2026)',
+            targetReleaseDate: OLLAMA_DATES_CACHE.dates['qwen3.5'] || 'Сентябрь 2026',
+            evolution: 'Qwen3 4B (Окт 2025) ➔ Qwen3.5 4B (Сент 2026) ⚡',
             description: 'Свежая компактная модель: скорость 50+ токенов/сек, мультимодальность, идеально для повседневных задач.',
-            vramFit: '🟢 Занимает меньше половины VRAM'
+            vramFit: '🟢 100% GPU (Занимает меньше половины VRAM)'
         },
         {
             check: (name) => name.startsWith('qwen3:0.6b') || name.startsWith('qwen3:1.7b'),
+            modelClass: 'chat',
+            className: '💬 Чат и логика',
+            tier: 'light',
+            tierName: '🪶 УЛЬТРАЛЕГКИЙ',
             targetFamily: 'qwen3.5',
             targetTag: 'qwen3.5:2b',
             title: 'Qwen3.5 2B (Компактная)',
             sizeApprox: '~1.8 GB',
-            description: 'Миниатюрная модель 2026 года нового поколения.',
-            vramFit: '🟢 Минимальная нагрузка'
+            oldGeneration: 'Qwen3 1.7B / 0.6B (Октябрь 2025)',
+            newGeneration: 'Qwen3.5 2B (Сентябрь 2026)',
+            targetReleaseDate: OLLAMA_DATES_CACHE.dates['qwen3.5'] || 'Сентябрь 2026',
+            evolution: 'Qwen3 0.6B/1.7B (Окт 2025) ➔ Qwen3.5 2B (Сент 2026) 🚀',
+            description: 'Миниатюрная модель 2026 года нового поколения с блоками размышлений.',
+            vramFit: '🟢 100% GPU (Минимальная нагрузка)'
         },
         {
             check: (name) => name.startsWith('nomic-embed-text'),
+            modelClass: 'embedding',
+            className: '⚡ Эмбеддинги (RAG)',
+            tier: 'light',
+            tierName: '🪶 СТАНДАРТ RAG',
             targetFamily: 'qwen3-embedding',
             targetTag: 'qwen3-embedding:0.6b',
             title: 'Qwen3-Embedding 0.6B (RAG)',
             sizeApprox: '~600 MB',
+            oldGeneration: 'nomic-embed-text (Базовая)',
+            newGeneration: 'Qwen3-Embedding 0.6B (Сентябрь 2025)',
+            targetReleaseDate: OLLAMA_DATES_CACHE.dates['qwen3-embedding'] || 'Сентябрь 2025',
+            evolution: 'nomic-embed-text ➔ Qwen3-Embedding 0.6B ✨',
             description: 'Официальная модель эмбеддингов Qwen для базы знаний: расширенный контекст 32K, идеальная семантика русского языка.',
-            vramFit: '🟢 Минимальный вес'
+            vramFit: '🟢 Минимальный вес (600 MB)'
         }
     ];
 
@@ -664,6 +994,14 @@ async function checkModelUpdates(forceRefresh = false) {
                         newModel: rule.targetTag,
                         newTitle: rule.title,
                         newSize: rule.sizeApprox,
+                        modelClass: rule.modelClass,
+                        className: rule.className,
+                        tier: rule.tier,
+                        tierName: rule.tierName,
+                        oldGeneration: rule.oldGeneration,
+                        newGeneration: rule.newGeneration,
+                        targetReleaseDate: rule.targetReleaseDate,
+                        evolution: rule.evolution,
                         description: rule.description,
                         vramFit: rule.vramFit
                     });
@@ -683,6 +1021,14 @@ async function checkModelUpdates(forceRefresh = false) {
                 newModel: 'qwen3-vl:4b',
                 newTitle: 'Qwen3-VL 4B (Компьютерное зрение)',
                 newSize: '~3.5 GB',
+                modelClass: 'vision',
+                className: '👁️ Зрение (Vision)',
+                tier: 'balanced',
+                tierName: '🚀 СБАЛАНСИРОВАННЫЙ',
+                oldGeneration: null,
+                newGeneration: 'Qwen3-VL 4B (Октябрь 2025)',
+                targetReleaseDate: OLLAMA_DATES_CACHE.dates['qwen3-vl'] || 'Октябрь 2025',
+                evolution: '✨ Новая категория: Компьютерное зрение',
                 description: 'Новая модель со зрением: распознавание изображений, графиков, скриншотов и документов.',
                 vramFit: '🟢 Идеально для 8 GB VRAM'
             });
@@ -691,6 +1037,7 @@ async function checkModelUpdates(forceRefresh = false) {
 
     const result = {
         status: 'ok',
+        hardware: hwSpecs,
         installedCount: installed.length,
         updatesCount: updates.length,
         updates: updates,
@@ -1053,7 +1400,43 @@ const server = http.createServer((req, res) => {
         return;
     }
 
-    // 10. Проксирование остальных запросов к Ollama (/api/chat, /api/tags, /api/pull, /api/delete и т.д.)
+    // 9.1 Системные характеристики ПК (Hardware Advisor)
+    if (req.url === '/api/system/hardware' && req.method === 'GET') {
+        getSystemHardwareSpecs().then(specs => {
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ status: 'ok', hardware: specs }));
+        }).catch(err => {
+            res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ error: err.message }));
+        });
+        return;
+    }
+
+    // 9.2 Обогащенный список установленных моделей (классы, мощности, даты, совместимость)
+    if (req.url === '/api/tags' && req.method === 'GET') {
+        Promise.all([
+            getLocalOllamaModels(),
+            getSystemHardwareSpecs(),
+            fetchOllamaQwenLibrary()
+        ]).then(([models, hwSpecs]) => {
+            const enrichedModels = models.map(m => {
+                const classification = classifyModel(m.name, m.size, hwSpecs);
+                return {
+                    ...m,
+                    classification: classification
+                };
+            });
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ models: enrichedModels }));
+        }).catch(err => {
+            writeLog('ERROR', `Ошибка получения моделей /api/tags: ${err.message}`);
+            res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ models: [] }));
+        });
+        return;
+    }
+
+    // 10. Проксирование остальных запросов к Ollama (/api/chat, /api/pull, /api/delete и т.д.)
     if (req.url.startsWith('/api/')) {
         writeLog('DEBUG', `Proxy ${req.method} ${req.url}`);
 

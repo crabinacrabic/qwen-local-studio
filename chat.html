@@ -299,6 +299,151 @@
             color: white;
         }
 
+        /* Виджет характеристик ПК в шапке */
+        .hw-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+            cursor: default;
+            user-select: none;
+            margin-left: 10px;
+        }
+        .hw-badge .hw-gpu { color: #58a6ff; font-weight: 600; }
+        .hw-badge .hw-ram { color: #bc8cff; }
+        .hw-badge .hw-disk { color: #3fb950; font-weight: 500; }
+        .hw-badge .hw-sep { color: #484f58; }
+
+        /* Вкладки фильтрации по классам моделей */
+        .class-filter-bar {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
+            padding-bottom: 4px;
+        }
+
+        .class-tab-btn {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            padding: 5px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.82rem;
+            font-weight: 500;
+            transition: all 0.2s;
+            user-select: none;
+        }
+
+        .class-tab-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text-primary);
+        }
+
+        .class-tab-btn.active {
+            background: #1f6feb;
+            border-color: #388bfd;
+            color: #ffffff;
+            font-weight: 600;
+        }
+
+        /* Бейджи на карточках моделей */
+        .badge-tier {
+            display: inline-block;
+            font-size: 0.72rem;
+            padding: 2px 7px;
+            border-radius: 4px;
+            font-weight: 600;
+            background: rgba(187, 134, 252, 0.15);
+            color: #d2a8ff;
+            border: 1px solid rgba(187, 134, 252, 0.3);
+        }
+
+        .badge-tier.tier-light {
+            background: rgba(56, 139, 253, 0.15);
+            color: #79c0ff;
+            border-color: rgba(56, 139, 253, 0.3);
+        }
+
+        .badge-tier.tier-balanced {
+            background: rgba(46, 160, 67, 0.15);
+            color: #56d364;
+            border-color: rgba(46, 160, 67, 0.3);
+        }
+
+        .badge-tier.tier-flagship {
+            background: rgba(240, 136, 62, 0.15);
+            color: #ffa657;
+            border-color: rgba(240, 136, 62, 0.3);
+        }
+
+        .badge-tier.tier-expert {
+            background: rgba(219, 97, 162, 0.15);
+            color: #ff7b72;
+            border-color: rgba(219, 97, 162, 0.3);
+        }
+
+        .badge-date {
+            display: inline-block;
+            font-size: 0.72rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            background: rgba(255, 255, 255, 0.06);
+            color: #8b949e;
+            border: 1px solid var(--border-color);
+        }
+
+        .badge-compat {
+            display: inline-block;
+            font-size: 0.72rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+
+        .model-card-lineage {
+            font-size: 0.76rem;
+            color: #58a6ff;
+            margin-top: 2px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        /* Баннер преемственности в окне обновлений */
+        .evolution-banner {
+            background: rgba(59, 130, 246, 0.08);
+            border: 1px dashed rgba(59, 130, 246, 0.35);
+            border-radius: 8px;
+            padding: 8px 12px;
+            margin: 8px 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.88rem;
+        }
+        .evolution-banner .evo-old { color: #8b949e; text-decoration: line-through; }
+        .evolution-banner .evo-arrow { color: #58a6ff; font-weight: bold; }
+        .evolution-banner .evo-new { color: #3fb950; font-weight: 600; }
+        .update-class-title {
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid var(--border-color);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.76rem;
+            color: #93c5fd;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
         /* Прогресс-бар */
         .progress-box {
             background: rgba(0, 0, 0, 0.4);
@@ -977,6 +1122,14 @@
             <div class="header-title">
                 <span class="status-dot"></span>
                 <span>Qwen AI Studio (Локально)</span>
+                <div id="hwSpecsBadge" class="hw-badge" title="Анализатор железа: параметры системы и VRAM">
+                    <span class="hw-icon">🖥️</span>
+                    <span id="hwGpu" class="hw-gpu">Загрузка...</span>
+                    <span class="hw-sep">•</span>
+                    <span id="hwRam" class="hw-ram">RAM...</span>
+                    <span class="hw-sep">•</span>
+                    <span id="hwDisk" class="hw-disk">Диск...</span>
+                </div>
             </div>
             <div class="header-controls">
                 <button id="toggleWebBtn" class="btn-web-toggle" title="Включить / отключить поиск в живом интернете">
@@ -1032,6 +1185,16 @@
                         <span>🔄 Проверить новые модели</span>
                     </button>
                 </div>
+
+                <!-- Фильтр по классам моделей -->
+                <div class="class-filter-bar">
+                    <button class="class-tab-btn active" data-class="all" onclick="filterByClass('all')">Все классы (<span id="countAll">0</span>)</button>
+                    <button class="class-tab-btn" data-class="chat" onclick="filterByClass('chat')">💬 Чат и логика (<span id="countChat">0</span>)</button>
+                    <button class="class-tab-btn" data-class="vision" onclick="filterByClass('vision')">👁️ Зрение (<span id="countVision">0</span>)</button>
+                    <button class="class-tab-btn" data-class="coder" onclick="filterByClass('coder')">💻 Кодинг (<span id="countCoder">0</span>)</button>
+                    <button class="class-tab-btn" data-class="embedding" onclick="filterByClass('embedding')">⚡ Эмбеддинги (<span id="countEmbedding">0</span>)</button>
+                </div>
+
                 <div id="installedModelsList" class="installed-models-list"></div>
             </div>
         </div>
@@ -1361,7 +1524,13 @@
                 const card = document.createElement('div');
                 card.className = 'update-card';
 
-                const transitionHtml = u.oldModel ? `
+                const evolutionHtml = u.evolution ? `
+                    <div class="evolution-banner">
+                        <span class="evo-old">${escapeHtml(u.oldGeneration || u.oldModel || '')}</span>
+                        <span class="evo-arrow">➔</span>
+                        <span class="evo-new">${escapeHtml(u.newGeneration || u.newModel || '')}</span>
+                    </div>
+                ` : (u.oldModel ? `
                     <div class="update-model-transition">
                         <span class="badge-old-model">${escapeHtml(u.oldModel)}</span>
                         <span style="color: #58a6ff;">➔</span>
@@ -1371,17 +1540,28 @@
                     <div class="update-model-transition">
                         <span class="badge-new-model">✨ Новинка: ${escapeHtml(u.newModel)}</span>
                     </div>
-                `;
+                `);
+
+                const classTierBadge = u.className && u.tierName ? `
+                    <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px; flex-wrap:wrap;">
+                        <span class="update-class-title">${escapeHtml(u.className)}</span>
+                        <span class="badge-tier tier-${u.tier || 'flagship'}">${escapeHtml(u.tierName)}</span>
+                        ${u.targetReleaseDate ? `<span class="badge-date">📅 ${escapeHtml(u.targetReleaseDate)}</span>` : ''}
+                    </div>
+                ` : '';
 
                 card.innerHTML = `
                     <div class="update-card-header">
-                        ${transitionHtml}
-                        <div style="display:flex; align-items:center; gap:6px;">
-                            <span style="font-size:0.8rem; color:var(--text-secondary); font-weight:600;">${escapeHtml(u.newSize)}</span>
-                            <span class="badge-vram">${escapeHtml(u.vramFit)}</span>
+                        <div style="flex:1;">
+                            ${classTierBadge}
+                            ${evolutionHtml}
+                        </div>
+                        <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px; min-width:120px;">
+                            <span style="font-size:0.85rem; color:var(--text-secondary); font-weight:600;">${escapeHtml(u.newSize)}</span>
+                            <span class="badge-vram" style="background:rgba(46, 160, 67, 0.15); border:1px solid rgba(46, 160, 67, 0.4); color:#3fb950;">${escapeHtml(u.vramFit)}</span>
                         </div>
                     </div>
-                    <div style="font-weight:600; font-size:0.92rem; color:#e6edf3;">${escapeHtml(u.newTitle)}</div>
+                    <div style="font-weight:600; font-size:0.95rem; color:#e6edf3; margin-top:4px;">${escapeHtml(u.newTitle)}</div>
                     <div class="update-card-desc">${escapeHtml(u.description)}</div>
                     <div class="update-options-group">
                         ${u.oldModel ? `
@@ -1513,6 +1693,36 @@
             closeUpdateModalBtn.disabled = false;
         });
 
+        let allInstalledModelsRaw = [];
+        let currentClassFilter = 'all';
+
+        // Фильтрация моделей по классам
+        function filterByClass(cls) {
+            currentClassFilter = cls;
+            document.querySelectorAll('.class-tab-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.getAttribute('data-class') === cls);
+            });
+            renderCards();
+        }
+
+        // Загрузка характеристик ПК для виджета
+        async function loadHardwareSpecs() {
+            try {
+                const res = await fetch('/api/system/hardware', { cache: 'no-store' });
+                if (!res.ok) return;
+                const data = await res.json();
+                if (data.status === 'ok' && data.hardware) {
+                    const hw = data.hardware;
+                    const gpuEl = document.getElementById('hwGpu');
+                    const ramEl = document.getElementById('hwRam');
+                    const diskEl = document.getElementById('hwDisk');
+                    if (gpuEl) gpuEl.innerText = `${hw.gpuName} (${hw.vramGB} GB VRAM)`;
+                    if (ramEl) ramEl.innerText = `${hw.ramTotalGB} GB RAM`;
+                    if (diskEl) diskEl.innerText = `Диск C: ${hw.diskFreeGB} GB свободно`;
+                }
+            } catch (e) {}
+        }
+
         // Динамическая загрузка списка установленных моделей из Ollama с автоповтором
         async function loadInstalledModels(retryCount = 0) {
             try {
@@ -1521,30 +1731,29 @@
                 if (!res.ok) throw new Error('Не удалось получить список моделей: HTTP ' + res.status);
                 const data = await res.json();
                 
-                // Фильтруем модели эмбеддингов (nomic-embed-text и аналоги)
-                // Они работают исключительно в фоне для RAG и не предназначены для общения в чате
+                allInstalledModelsRaw = data.models || [];
+
+                // Фильтруем модели эмбеддингов для селектора чата
                 const isEmbeddingModel = m => {
                     const n = (m.name || '').toLowerCase();
-                    return n.includes('embed') || n.includes('bge-') || n.includes('all-minilm');
+                    const c = m.classification || {};
+                    return c.class === 'embedding' || n.includes('embed') || n.includes('bge-') || n.includes('all-minilm');
                 };
 
-                const allModels = data.models || [];
-                installedModelsCache = allModels.filter(m => !isEmbeddingModel(m));
+                installedModelsCache = allInstalledModelsRaw.filter(m => !isEmbeddingModel(m));
 
-                logMessage('INFO', `Найдено текстовых моделей для чата: ${installedModelsCache.length} (скрыто моделей эмбеддингов: ${allModels.length - installedModelsCache.length})`);
+                logMessage('INFO', `Найдено моделей: ${allInstalledModelsRaw.length} (для чата: ${installedModelsCache.length}, эмбеддинги: ${allInstalledModelsRaw.length - installedModelsCache.length})`);
 
                 // Определяем текущую выбранную модель
                 let savedModel = localStorage.getItem('last_selected_model');
-                // Если ранее по ошибке была сохранена модель эмбеддингов, сбрасываем её
                 if (savedModel && isEmbeddingModel({ name: savedModel })) {
                     savedModel = null;
                 }
 
                 let validSelection = installedModelsCache.find(m => m.name === savedModel);
 
-                // Если сохраненная модель не существует, выбираем лучшую доступную (qwen3:8b, qwen3:4b, или первую)
                 if (!validSelection && installedModelsCache.length > 0) {
-                    const preferred = installedModelsCache.find(m => m.name.includes('8b')) ||
+                    const preferred = installedModelsCache.find(m => m.name.includes('9b') || m.name.includes('8b')) ||
                                       installedModelsCache.find(m => m.name.includes('4b')) ||
                                       installedModelsCache[0];
                     savedModel = preferred.name;
@@ -1560,8 +1769,10 @@
                         const opt = document.createElement('option');
                         opt.value = m.name;
                         const sizeGB = (m.size / (1024 * 1024 * 1024)).toFixed(1);
-                        const paramSize = m.details && m.details.parameter_size ? m.details.parameter_size : '';
-                        opt.innerText = `${m.name} (${sizeGB} GB ${paramSize ? '• ' + paramSize : ''})`;
+                        const c = m.classification || {};
+                        const tier = c.tierName ? ` • ${c.tierName}` : '';
+                        const date = c.releaseDate ? ` • 📅 ${c.releaseDate}` : '';
+                        opt.innerText = `${m.name} (${sizeGB} GB${tier}${date})`;
                         if (m.name === savedModel) {
                             opt.selected = true;
                         }
@@ -1571,6 +1782,7 @@
                 }
 
                 renderCards();
+                loadHardwareSpecs();
 
             } catch (err) {
                 logMessage('WARN', `Ошибка загрузки моделей (попытка ${retryCount + 1}/4): ${err.message}`);
@@ -1584,32 +1796,76 @@
             }
         }
 
-        // Отрисовка карточек установленных моделей
+        // Отрисовка карточек установленных моделей с фильтрами по классам
         function renderCards() {
             installedModelsList.innerHTML = '';
             const currentSelected = modelSelect.value;
 
-            if (installedModelsCache.length === 0) {
-                installedModelsList.innerHTML = '<div style="color:var(--text-secondary);">Модели не найдены.</div>';
+            // Подсчет счетчиков по классам
+            let countAll = 0, countChat = 0, countVision = 0, countCoder = 0, countEmbedding = 0;
+            allInstalledModelsRaw.forEach(m => {
+                countAll++;
+                const cls = m.classification ? m.classification.class : 'chat';
+                if (cls === 'chat') countChat++;
+                else if (cls === 'vision') countVision++;
+                else if (cls === 'coder') countCoder++;
+                else if (cls === 'embedding') countEmbedding++;
+            });
+
+            const countAllEl = document.getElementById('countAll');
+            if (countAllEl) countAllEl.innerText = countAll;
+            const countChatEl = document.getElementById('countChat');
+            if (countChatEl) countChatEl.innerText = countChat;
+            const countVisionEl = document.getElementById('countVision');
+            if (countVisionEl) countVisionEl.innerText = countVision;
+            const countCoderEl = document.getElementById('countCoder');
+            if (countCoderEl) countCoderEl.innerText = countCoder;
+            const countEmbeddingEl = document.getElementById('countEmbedding');
+            if (countEmbeddingEl) countEmbeddingEl.innerText = countEmbedding;
+
+            // Фильтрация по выбранной вкладке
+            const filtered = allInstalledModelsRaw.filter(m => {
+                if (currentClassFilter === 'all') return true;
+                const cls = m.classification ? m.classification.class : 'chat';
+                return cls === currentClassFilter;
+            });
+
+            if (filtered.length === 0) {
+                installedModelsList.innerHTML = '<div style="color:var(--text-secondary); padding: 12px 0;">В этом классе модели пока не установлены.</div>';
                 return;
             }
 
-            installedModelsCache.forEach(m => {
+            filtered.forEach(m => {
                 const name = m.name;
                 const sizeGB = (m.size / (1024 * 1024 * 1024)).toFixed(1);
                 const paramSize = m.details && m.details.parameter_size ? m.details.parameter_size : '';
                 const isActive = name === currentSelected;
+                const c = m.classification || {};
+                const tierClass = c.tier ? `tier-${c.tier}` : 'tier-flagship';
+                const compat = c.compatibility || { badge: '🟢 GPU', color: '#2ea043', text: 'Готова к работе' };
+                const releaseDate = c.releaseDate || '2025-2026';
+                const lineage = c.lineage || '';
+                const isEmbed = c.class === 'embedding';
 
                 const card = document.createElement('div');
                 card.className = `model-card ${isActive ? 'active' : ''}`;
                 card.innerHTML = `
-                    <div class="model-card-info">
-                        <span class="model-card-name">${name}</span>
-                        <span class="model-card-size">${sizeGB} GB ${paramSize ? '• ' + paramSize : ''}</span>
+                    <div class="model-card-info" style="flex: 1;">
+                        <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:4px;">
+                            <span class="model-card-name">${escapeHtml(name)}</span>
+                            <span class="badge-tier ${tierClass}">${escapeHtml(c.tierName || 'Стандарт')}</span>
+                            <span class="badge-date">📅 ${escapeHtml(releaseDate)}</span>
+                            <span class="badge-compat" style="background:${compat.color}22; color:${compat.color}; border:1px solid ${compat.color}55;">${escapeHtml(compat.badge)}</span>
+                        </div>
+                        <div style="font-size:0.8rem; color:var(--text-secondary); display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                            <span>${sizeGB} GB ${paramSize ? '• ' + paramSize : ''}</span>
+                            ${lineage ? `<span class="model-card-lineage">↳ ${escapeHtml(lineage)}</span>` : ''}
+                        </div>
+                        <div style="font-size:0.75rem; color:${compat.color}; margin-top:2px;">${escapeHtml(compat.text)}</div>
                     </div>
                     <div class="model-card-actions">
-                        <button class="btn-select-model" onclick="applyModelSelection('${name}')">${isActive ? 'Выбрана' : 'Выбрать'}</button>
-                        <button class="btn-delete-model" onclick="deleteModel('${name}')">Удалить</button>
+                        ${!isEmbed ? `<button class="btn-select-model" onclick="applyModelSelection('${escapeHtml(name)}')">${isActive ? 'Выбрана' : 'Выбрать'}</button>` : '<span style="font-size:0.75rem; color:var(--text-secondary); padding:4px;">Служба RAG</span>'}
+                        <button class="btn-delete-model" onclick="deleteModel('${escapeHtml(name)}')">Удалить</button>
                     </div>
                 `;
                 installedModelsList.appendChild(card);
@@ -2378,6 +2634,7 @@ ${contextBlocks.join('\n\n')}
 
         // Запуск при старте
         window.addEventListener('DOMContentLoaded', () => {
+            loadHardwareSpecs();
             loadInstalledModels();
             updateRagButtonUI();
             updateWebButtonUI();
