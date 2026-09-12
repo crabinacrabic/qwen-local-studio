@@ -1673,7 +1673,11 @@
                 left: 0;
                 top: 0;
                 bottom: 0;
+                transform: translateX(-100%);
                 box-shadow: 10px 0 25px rgba(0, 0, 0, 0.7);
+            }
+            .chat-sidebar.open {
+                transform: translateX(0);
             }
             .sidebar-close-btn {
                 display: block;
@@ -4217,15 +4221,26 @@ ${contextBlocks.join('\n\n')}
             }
         }
 
+        // Переключение видимости боковой панели диалогов (Desktop: collapsed, Mobile: open)
+        function toggleSidebar() {
+            if (window.innerWidth <= 768) {
+                chatSidebar.classList.toggle('open');
+            } else {
+                chatSidebar.classList.toggle('collapsed');
+            }
+        }
+
         // Слушатели событий боковой панели и контекстного бара
         if (toggleSidebarBtn) {
-            toggleSidebarBtn.addEventListener('click', () => {
-                chatSidebar.classList.toggle('open');
-            });
+            toggleSidebarBtn.addEventListener('click', toggleSidebar);
         }
         if (closeSidebarBtn) {
             closeSidebarBtn.addEventListener('click', () => {
-                chatSidebar.classList.remove('open');
+                if (window.innerWidth <= 768) {
+                    chatSidebar.classList.remove('open');
+                } else {
+                    chatSidebar.classList.add('collapsed');
+                }
             });
         }
         if (newChatBtn) {
@@ -4260,7 +4275,7 @@ ${contextBlocks.join('\n\n')}
         window.addEventListener('keydown', (e) => {
             if ((e.ctrlKey || e.metaKey) && (e.key === 'b' || e.key === 'B')) {
                 e.preventDefault();
-                chatSidebar.classList.toggle('open');
+                toggleSidebar();
             }
             if ((e.ctrlKey || e.metaKey) && (e.key === 'n' || e.key === 'N')) {
                 e.preventDefault();
