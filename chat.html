@@ -2567,7 +2567,8 @@
             // 1. Отрисовка подклассов чата
             if (catalogClassFilter === 'all' || catalogClassFilter === 'chat') {
                 tierGroups.forEach(group => {
-                    const groupModels = filtered.filter(m => m.modelClass === 'chat' && m.tier === group.key);
+                    const groupModels = filtered.filter(m => m.modelClass === 'chat' && m.tier === group.key)
+                        .sort((a, b) => getModelSortScore(a) - getModelSortScore(b));
                     if (groupModels.length === 0) return;
 
                     const block = document.createElement('div');
@@ -2647,7 +2648,8 @@
             specialClasses.forEach(spec => {
                 if (catalogClassFilter !== 'all' && catalogClassFilter !== spec.key) return;
 
-                const specModels = filtered.filter(m => m.modelClass === spec.key);
+                const specModels = filtered.filter(m => m.modelClass === spec.key)
+                    .sort((a, b) => getModelSortScore(a) - getModelSortScore(b));
                 if (specModels.length === 0) return;
 
                 const block = document.createElement('div');
@@ -2813,6 +2815,46 @@
             closeUpdateModalBtn.disabled = false;
         });
 
+        // Расчет числового веса модели для хронологической сортировки от старых годов к новым (2024 -> 2025 -> 2026)
+        function getModelSortScore(m) {
+            if (!m) return 0;
+            const name = (m.name || m.tag || '').toLowerCase();
+            const c = m.classification || {};
+            const relDate = (c.releaseDate || m.releaseDate || '').toLowerCase();
+            const gen = (c.generation || m.generation || '').toString();
+
+            let year = 2025;
+            let month = 1;
+
+            // 1. Определение эпохи / года выпуска
+            if (relDate.includes('2024') || name.includes('qwen2.5') || gen === '2.5') {
+                year = 2024;
+                month = relDate.includes('сентябр') ? 9 : 5;
+            } else if (relDate.includes('2026') || name.includes('qwen3.5') || name.includes('qwen3.6') || name.includes('qwen3.8') || gen.startsWith('3.5') || gen.startsWith('3.6') || gen.startsWith('3.8')) {
+                year = 2026;
+                if (relDate.includes('август') || name.includes('3.8')) month = 8;
+                else if (relDate.includes('сентябр') || name.includes('3.5') || name.includes('3.6')) month = 9;
+                else month = 10;
+            } else if (relDate.includes('2025') || name.includes('qwen3') || gen === '3.0') {
+                year = 2025;
+                if (relDate.includes('май')) month = 5;
+                else if (relDate.includes('сентябр')) month = 9;
+                else if (relDate.includes('октябр')) month = 10;
+                else month = 6;
+            }
+
+            // 2. Параметры модели (в миллионах) для сортировки от меньших к большим внутри одного поколения
+            let paramScore = 0;
+            const match = name.match(/(\d+(?:\.\d+)?)\s*b/i);
+            if (match) {
+                paramScore = parseFloat(match[1]) * 1000;
+            } else if (m.size) {
+                paramScore = m.size / (1024 * 1024);
+            }
+
+            return (year * 10000000) + (month * 100000) + paramScore;
+        }
+
         let allInstalledModelsRaw = [];
         let currentClassFilter = 'all';
 
@@ -2861,6 +2903,7 @@
                 const data = await res.json();
                 
                 allInstalledModelsRaw = data.models || [];
+                allInstalledModelsRaw.sort((a, b) => getModelSortScore(a) - getModelSortScore(b));
 
                 // Фильтруем модели эмбеддингов для селектора чата
                 const isEmbeddingModel = m => {
@@ -2869,7 +2912,9 @@
                     return c.class === 'embedding' || n.includes('embed') || n.includes('bge-') || n.includes('all-minilm');
                 };
 
-                installedModelsCache = allInstalledModelsRaw.filter(m => !isEmbeddingModel(m));
+                installedModelsCache = allInstalledModelsRaw
+                    .filter(m => !isEmbeddingModel(m))
+                    .sort((a, b) => getModelSortScore(a) - getModelSortScore(b));
 
                 logMessage('INFO', `Найдено моделей: ${allInstalledModelsRaw.length} (для чата: ${installedModelsCache.length}, эмбеддинги: ${allInstalledModelsRaw.length - installedModelsCache.length})`);
 
@@ -2899,9 +2944,10 @@
                         opt.value = m.name;
                         const sizeGB = (m.size / (1024 * 1024 * 1024)).toFixed(1);
                         const c = m.classification || {};
+                        const classIcon = c.class === 'vision' ? ' • 👁️ Зрение' : (c.class === 'coder' ? ' • 💻 Кодинг' : '');
                         const tier = c.tierName ? ` • ${c.tierName}` : '';
                         const date = c.releaseDate ? ` • 📅 ${c.releaseDate}` : '';
-                        opt.innerText = `${m.name} (${sizeGB} GB${tier}${date})`;
+                        opt.innerText = `${m.name} (${sizeGB} GB${classIcon}${tier}${date})`;
                         if (m.name === savedModel) {
                             opt.selected = true;
                         }
@@ -2973,14 +3019,14 @@
             const countTierExpertEl = document.getElementById('countTierExpert');
             if (countTierExpertEl) countTierExpertEl.innerText = countTierExpert;
 
-            // Фильтрация по выбранным вкладкам класса и мощности
+            // Фильтрация по выбранным вкладкам класса и мощности + хронологическая сортировка (2024 -> 2025 -> 2026)
             const filtered = allInstalledModelsRaw.filter(m => {
                 const cls = m.classification ? m.classification.class : 'chat';
                 const tier = m.classification ? m.classification.tier : 'flagship';
                 const matchClass = (currentClassFilter === 'all') || (cls === currentClassFilter);
                 const matchTier = (currentTierFilter === 'all') || (tier === currentTierFilter);
                 return matchClass && matchTier;
-            });
+            }).sort((a, b) => getModelSortScore(a) - getModelSortScore(b));
 
             if (filtered.length === 0) {
                 installedModelsList.innerHTML = '<div style="color:var(--text-secondary); padding: 12px 0;">В этой категории модели пока не установлены.</div>';
@@ -3853,7 +3899,14 @@ ${contextBlocks.join('\n\n')}
 
             const remaining = Math.max(0, maxTokens - usedTokens);
             const colorClass = pct >= 85 ? '#f85149' : (pct >= 60 ? '#e3b341' : '#56d364');
-            contextMeterText.innerHTML = `${formatK(usedTokens)} / ${formatK(maxTokens)} <span style="font-weight:700; color:${colorClass}">(${pct}%)</span> • Свободно: ${formatK(remaining)}`;
+            const selectedModelName = (modelSelect && modelSelect.value) ? modelSelect.value : '';
+            const isVisionModel = selectedModelName.includes('-vl') || selectedModelName.includes('vl:');
+            
+            const badgeOpt = isVisionModel 
+                ? `<span style="font-size:0.75rem; color:#60a5fa; font-weight:600; margin-left:6px; cursor:help;" title="Мультимодальная модель (Vision): лимит 16K оптимизирован для видеопамяти 8 GB VRAM, чтобы исключить OOM при обработке картинок">[👁️ 16K Vision Opt]</span>`
+                : `<span style="font-size:0.75rem; color:#a78bfa; font-weight:500; margin-left:6px; cursor:help;" title="Текстовая модель (Chat): лимит 32K обеспечивает глубокий контекст на полной скорости GPU">[💬 32K Native]</span>`;
+
+            contextMeterText.innerHTML = `${formatK(usedTokens)} / ${formatK(maxTokens)} <span style="font-weight:700; color:${colorClass}">(${pct}%)</span> • Свободно: ${formatK(remaining)} ${badgeOpt}`;
 
             // Авто-сжатие при превышении 85% контекста
             if (pct >= 85 && autoCompactEnabled && !isCompacting && currentChatId) {
@@ -3998,6 +4051,7 @@ ${contextBlocks.join('\n\n')}
                 }
 
                 if (messages.length === 0 && !summary) {
+                    updateContextMeter(0, getModelContextLimit(modelSelect.value));
                     const welcomeDiv = document.createElement('div');
                     welcomeDiv.className = 'message assistant';
                     welcomeDiv.innerHTML = `

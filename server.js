@@ -896,6 +896,46 @@ function classifyModel(modelName, sizeBytes = 0, hwSpecs = null) {
     };
 }
 
+// Расчет числового веса модели для хронологической сортировки от старых годов к новым (2024 -> 2025 -> 2026)
+function getModelSortScore(m) {
+    if (!m) return 0;
+    const name = (m.name || m.tag || '').toLowerCase();
+    const c = m.classification || {};
+    const relDate = (c.releaseDate || m.releaseDate || '').toLowerCase();
+    const gen = (c.generation || m.generation || '').toString();
+
+    let year = 2025;
+    let month = 1;
+
+    // 1. Определение эпохи / года выпуска
+    if (relDate.includes('2024') || name.includes('qwen2.5') || gen === '2.5') {
+        year = 2024;
+        month = relDate.includes('сентябр') ? 9 : 5;
+    } else if (relDate.includes('2026') || name.includes('qwen3.5') || name.includes('qwen3.6') || name.includes('qwen3.8') || gen.startsWith('3.5') || gen.startsWith('3.6') || gen.startsWith('3.8')) {
+        year = 2026;
+        if (relDate.includes('август') || name.includes('3.8')) month = 8;
+        else if (relDate.includes('сентябр') || name.includes('3.5') || name.includes('3.6')) month = 9;
+        else month = 10;
+    } else if (relDate.includes('2025') || name.includes('qwen3') || gen === '3.0') {
+        year = 2025;
+        if (relDate.includes('май')) month = 5;
+        else if (relDate.includes('сентябр')) month = 9;
+        else if (relDate.includes('октябр')) month = 10;
+        else month = 6;
+    }
+
+    // 2. Параметры модели (в миллионах) для сортировки от меньших к большим внутри одного поколения
+    let paramScore = 0;
+    const match = name.match(/(\d+(?:\.\d+)?)\s*b/i);
+    if (match) {
+        paramScore = parseFloat(match[1]) * 1000;
+    } else if (m.size) {
+        paramScore = m.size / (1024 * 1024);
+    }
+
+    return (year * 10000000) + (month * 100000) + paramScore;
+}
+
 function buildQwenCatalog(installedModels = [], hwSpecs = null) {
     const installedNames = (installedModels || []).map(m => (m.name || '').toLowerCase());
     const d = OLLAMA_DATES_CACHE.dates || {};
@@ -1930,6 +1970,8 @@ const server = http.createServer((req, res) => {
                     classification: classification
                 };
             });
+            // Хронологическая сортировка: от старых годов выпуска к новым (2024 -> 2025 -> 2026)
+            enrichedModels.sort((a, b) => getModelSortScore(a) - getModelSortScore(b));
             res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
             res.end(JSON.stringify({ models: enrichedModels }));
         }).catch(err => {
@@ -1992,15 +2034,29 @@ const server = http.createServer((req, res) => {
     // 10. Лимиты контекстного окна моделей (Context Window Info)
     if (req.url === '/api/models/context-limits' && req.method === 'GET') {
         const limitsMap = {
+            'qwen3.8:27b': 32768,
+            'qwen3.6:27b': 32768,
             'qwen3.5:9b': 32768,
             'qwen3.5:4b': 32768,
             'qwen3.5:2b': 32768,
+            'qwen3.5:0.8b': 32768,
+            'qwen3:30b': 32768,
             'qwen3:8b': 32768,
             'qwen3:4b': 32768,
             'qwen3:1.7b': 32768,
             'qwen3:0.6b': 32768,
+            'qwen3-vl:8b': 16384,
             'qwen3-vl:4b': 16384,
-            'qwen3-embedding:0.6b': 32768
+            'qwen3-vl:2b': 16384,
+            'qwen3-coder:7b': 32768,
+            'qwen3-embedding:0.6b': 32768,
+            'qwen2.5:32b': 32768,
+            'qwen2.5:14b': 32768,
+            'qwen2.5:7b': 32768,
+            'qwen2.5:3b': 32768,
+            'qwen2.5:1.5b': 32768,
+            'qwen2.5:0.5b': 32768,
+            'qwen2.5-coder:7b': 32768
         };
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({
@@ -2008,16 +2064,9 @@ const server = http.createServer((req, res) => {
             defaultNumCtx: 32768,
             recommendedNumCtx: 32768,
             limits: limitsMap,
-            models: {
-                'qwen3.5:9b': { num_ctx: 32768, max_arch: 262144 },
-                'qwen3.5:4b': { num_ctx: 32768, max_arch: 262144 },
-                'qwen3.5:2b': { num_ctx: 32768, max_arch: 262144 },
-                'qwen3:8b': { num_ctx: 32768, max_arch: 131072 },
-                'qwen3:4b': { num_ctx: 32768, max_arch: 131072 },
-                'qwen3:1.7b': { num_ctx: 32768, max_arch: 32768 },
-                'qwen3:0.6b': { num_ctx: 32768, max_arch: 32768 },
-                'qwen3-vl:4b': { num_ctx: 16384, max_arch: 32768 },
-                'qwen3-embedding:0.6b': { num_ctx: 32768, max_arch: 32768 }
+            reasons: {
+                vision: 'Мультимодальные модели (Vision): лимит 16K оптимизирован для видеопамяти 8 GB VRAM, исключая OOM при кодировании картинок.',
+                chat: 'Текстовые модели (Chat): полноценный лимит 32K для максимальной длины диалога на полной скорости GPU.'
             }
         }));
         return;
@@ -2240,10 +2289,11 @@ ${transcript.substring(0, 14000)}
             // Удаляем chat_id перед передачей в Ollama (Ollama его не ожидает)
             delete payload.chat_id;
 
-            // Обеспечиваем широкий лимит контекстного окна (32K по умолчанию под RX 6600)
+            // Обеспечиваем лимит контекстного окна (32K по умолчанию под RX 6600, 16K для мультимодальных Vision моделей)
             if (!payload.options) payload.options = {};
             if (!payload.options.num_ctx) {
-                payload.options.num_ctx = 32768;
+                const isVision = (payload.model || '').includes('-vl') || (payload.model || '').includes('vl:');
+                payload.options.num_ctx = isVision ? 16384 : 32768;
             }
 
             const ollamaPayload = JSON.stringify(payload);
