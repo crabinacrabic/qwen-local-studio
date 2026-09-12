@@ -2406,6 +2406,20 @@ ${transcript.substring(0, 14000)}
         return;
     }
 
+    // Отдача иконки и фавикона
+    if (req.url === '/icon.png' || req.url === '/favicon.ico') {
+        const iconFile = req.url === '/favicon.ico' ? 'icon.ico' : 'icon.png';
+        const iconPath = path.join(__dirname, iconFile);
+        if (fs.existsSync(iconPath)) {
+            res.writeHead(200, {
+                'Content-Type': req.url === '/favicon.ico' ? 'image/x-icon' : 'image/png',
+                'Cache-Control': 'public, max-age=86400'
+            });
+            fs.createReadStream(iconPath).pipe(res);
+            return;
+        }
+    }
+
     // Отдача веб-страницы чата с запретом кэширования
     const filePath = path.join(__dirname, 'chat.html');
     fs.readFile(filePath, (err, data) => {
@@ -2428,5 +2442,16 @@ ${transcript.substring(0, 14000)}
 server.listen(PORT, '127.0.0.1', () => {
     writeLog('INFO', `Сервер чата запущен и слушает http://localhost:${PORT}`);
     writeLog('INFO', `Лог-файл пишется в ${LOG_FILE}`);
-    exec(`start http://localhost:${PORT}`);
+
+    // Открытие окна приложения: если не передан флаг --no-open
+    if (!process.argv.includes('--no-open') && process.env.NO_AUTO_OPEN !== '1') {
+        const edgePath = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
+        if (fs.existsSync(edgePath)) {
+            writeLog('INFO', 'Запуск в отдельном окне приложения (Microsoft Edge App Mode)...');
+            exec(`"${edgePath}" --app="http://localhost:${PORT}" --window-size=1300,880`);
+        } else {
+            writeLog('INFO', 'Запуск в браузере по умолчанию...');
+            exec(`start http://localhost:${PORT}`);
+        }
+    }
 });
