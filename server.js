@@ -754,6 +754,33 @@ function classifyModel(modelName, sizeBytes = 0, hwSpecs = null) {
         generation = '3.0';
         releaseDate = OLLAMA_DATES_CACHE.dates['qwen3-embedding'] || 'Сентябрь 2025';
         lineage = 'Официальные эмбеддинги Qwen для базы знаний (контекст 32K)';
+    } else if (name.includes('abliterated') || name.includes('uncensored') || name.includes('dolphin')) {
+        modelClass = 'uncensored';
+        className = '🔓 Без цензуры (Abliterated)';
+        if (name.includes('0.8b') || name.includes('1.5b') || name.includes('2b')) {
+            tier = 'light';
+            tierName = '🌱 Ультралегкий';
+            approxVramGB = 2.0;
+        } else if (name.includes('3b') || name.includes('4b')) {
+            tier = 'balanced';
+            tierName = '🚀 Сбалансированный';
+            approxVramGB = 3.3;
+        } else if (name.includes('7b') || name.includes('8b') || name.includes('9b')) {
+            tier = 'flagship';
+            tierName = '⚡ Флагман';
+            approxVramGB = 5.5;
+        } else if (name.includes('14b')) {
+            tier = 'flagship';
+            tierName = '⚡ Продвинутый (14B)';
+            approxVramGB = 9.0;
+        } else {
+            tier = 'expert';
+            tierName = '🧠 Экспертный';
+            approxVramGB = 18.0;
+        }
+        generation = name.includes('3.5') ? '3.5' : (name.includes('qwen3') ? '3.0' : 'Abliterated');
+        releaseDate = '2025–2026';
+        lineage = 'Модифицированная версия со снятыми шаблонами отказа (abliterated)';
     } else if (name.includes('-vl') || name.includes('vl:')) {
         modelClass = 'vision';
         className = '👁️ Зрение (Vision)';
@@ -1394,6 +1421,98 @@ function buildQwenCatalog(installedModels = [], hwSpecs = null) {
             predecessor: null,
             successor: null,
             parameterAlert: null
+        },
+
+        // ===== 🔓 БЕЗ ЦЕНЗУРЫ И ОГРАНИЧЕНИЙ (ABLITERATED) =====
+        {
+            tag: 'huihui_ai/qwen3.5-abliterated:4B',
+            displayName: 'Qwen3.5 4B Abliterated',
+            family: 'qwen3.5-abliterated',
+            modelClass: 'uncensored',
+            className: '🔓 Без цензуры (Abliterated)',
+            tier: 'balanced',
+            tierName: '🚀 Сбалансированный',
+            generation: '3.5',
+            releaseDate: '2026',
+            params: '4B',
+            sizeApprox: '3.3 GB',
+            description: 'Версия Qwen3.5 со снятыми шаблонами отказа (abliterated). 100% в VRAM, моментальный отклик, зрение (Vision) и кодинг.',
+            lineage: 'Qwen3.5 4B ➔ huihui_ai/qwen3.5-abliterated:4B',
+            predecessor: null,
+            successor: null,
+            parameterAlert: '⚡ Идеально для RX 6600 (8 GB): модель весит всего 3.3 GB, оставляя 4.7 GB VRAM под длинный контекст и картинки.'
+        },
+        {
+            tag: 'huihui_ai/qwen3.5-abliterated:9b',
+            displayName: 'Qwen3.5 9B Abliterated',
+            family: 'qwen3.5-abliterated',
+            modelClass: 'uncensored',
+            className: '🔓 Без цензуры (Abliterated)',
+            tier: 'flagship',
+            tierName: '⚡ Флагман',
+            generation: '3.5',
+            releaseDate: '2026',
+            params: '9B',
+            sizeApprox: '6.6 GB',
+            description: 'Флагманская модель без ограничений. Глубокие рассуждения, поддержка Vision и текста, помещается в 8 GB VRAM.',
+            lineage: 'Qwen3.5 9B ➔ huihui_ai/qwen3.5-abliterated:9b',
+            predecessor: null,
+            successor: null,
+            parameterAlert: '🟢 Полностью помещается в 8 GB VRAM (занимает ~6.6 GB).'
+        },
+        {
+            tag: 'huihui_ai/qwen3.5-abliterated:2B',
+            displayName: 'Qwen3.5 2B Abliterated',
+            family: 'qwen3.5-abliterated',
+            modelClass: 'uncensored',
+            className: '🔓 Без цензуры (Abliterated)',
+            tier: 'light',
+            tierName: '🌱 Ультралегкий',
+            generation: '3.5',
+            releaseDate: '2026',
+            params: '2B',
+            sizeApprox: '1.9 GB',
+            description: 'Ультралегкая компактная модель 2026 года без фильтров отказа. Мгновенная генерация 60+ ток/сек.',
+            lineage: 'Qwen3.5 2B ➔ huihui_ai/qwen3.5-abliterated:2B',
+            predecessor: null,
+            successor: null,
+            parameterAlert: null
+        },
+        {
+            tag: 'dolphin-llama3:8b',
+            displayName: 'Dolphin Llama3 8B',
+            family: 'dolphin',
+            modelClass: 'uncensored',
+            className: '🔓 Без цензуры (Abliterated)',
+            tier: 'flagship',
+            tierName: '⚡ Флагман',
+            generation: 'Llama3',
+            releaseDate: '2024–2025',
+            params: '8B',
+            sizeApprox: '4.7 GB',
+            description: 'Легендарная модель от Эрика Хартфорда с полностью снятыми фильтрами и шаблонами отказа.',
+            lineage: 'Llama 3 8B ➔ Dolphin Llama3 8B',
+            predecessor: null,
+            successor: null,
+            parameterAlert: '🟢 100% в VRAM (4.7 GB). Проверенная временем классика сообщества открытого ИИ.'
+        },
+        {
+            tag: 'richardyoung/qwen3-14b-abliterated',
+            displayName: 'Qwen3 14B Abliterated',
+            family: 'qwen3-abliterated',
+            modelClass: 'uncensored',
+            className: '🔓 Без цензуры (Abliterated)',
+            tier: 'expert',
+            tierName: '🧠 Экспертный (14B)',
+            generation: '3.0',
+            releaseDate: '2025',
+            params: '14B',
+            sizeApprox: '9.0 GB',
+            description: 'Тяжелая продвинутая модель для сложных логических цепочек и кода со снятыми ограничениями.',
+            lineage: 'Qwen3 14B ➔ richardyoung/qwen3-14b-abliterated',
+            predecessor: null,
+            successor: null,
+            parameterAlert: '🟡 Требует частичного оффлоада в ваши 16 GB системной RAM.'
         }
     ];
 

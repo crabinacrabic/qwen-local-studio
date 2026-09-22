@@ -1763,7 +1763,10 @@
 
             <div class="quick-tags">
                 <span style="font-size:0.85rem; color: var(--text-secondary);">Быстрый выбор:</span>
-                <span class="tag-pill" onclick="setDlTag('qwen3.5:9b')">⭐ Qwen3.5 9B (Новый флагман 6.6 GB)</span>
+                <span class="tag-pill" onclick="setDlTag('huihui_ai/qwen3.5-abliterated:4B')" style="border-color: #8b5cf6; color: #c4b5fd;">🔓 Qwen3.5 4B Abliterated (3.3 GB)</span>
+                <span class="tag-pill" onclick="setDlTag('huihui_ai/qwen3.5-abliterated:9b')" style="border-color: #8b5cf6; color: #c4b5fd;">🔓 Qwen3.5 9B Abliterated (6.6 GB)</span>
+                <span class="tag-pill" onclick="setDlTag('dolphin-llama3:8b')" style="border-color: #8b5cf6; color: #c4b5fd;">🐬 Dolphin Llama3 8B (4.7 GB)</span>
+                <span class="tag-pill" onclick="setDlTag('qwen3.5:9b')">⭐ Qwen3.5 9B (Флагман 6.6 GB)</span>
                 <span class="tag-pill" onclick="setDlTag('qwen3.5:4b')">⚡ Qwen3.5 4B (Быстрая 3.4 GB)</span>
                 <span class="tag-pill" onclick="setDlTag('qwen3-vl:4b')">👁️ Qwen3-VL 4B (Зрение 3.5 GB)</span>
                 <span class="tag-pill" onclick="setDlTag('qwen3.8:27b')">🔥 Qwen3.8 27B (Тяжелая MoE 18 GB)</span>
@@ -1798,6 +1801,7 @@
                 <div class="class-filter-bar">
                     <button class="class-tab-btn active" data-class="all" onclick="filterByClass('all')">Все классы (<span id="countAll">0</span>)</button>
                     <button class="class-tab-btn" data-class="chat" onclick="filterByClass('chat')">💬 Чат и логика (<span id="countChat">0</span>)</button>
+                    <button class="class-tab-btn" data-class="uncensored" onclick="filterByClass('uncensored')">🔓 Без цензуры (<span id="countUncensored">0</span>)</button>
                     <button class="class-tab-btn" data-class="vision" onclick="filterByClass('vision')">👁️ Зрение (<span id="countVision">0</span>)</button>
                     <button class="class-tab-btn" data-class="coder" onclick="filterByClass('coder')">💻 Кодинг (<span id="countCoder">0</span>)</button>
                     <button class="class-tab-btn" data-class="embedding" onclick="filterByClass('embedding')">⚡ Эмбеддинги (<span id="countEmbedding">0</span>)</button>
@@ -1881,6 +1885,7 @@
                             <div class="class-filter-bar" style="margin-bottom: 0;">
                                 <button class="class-tab-btn active" data-catclass="all" onclick="filterCatalogClass('all')">Все классы</button>
                                 <button class="class-tab-btn" data-catclass="chat" onclick="filterCatalogClass('chat')">💬 Чат и логика</button>
+                                <button class="class-tab-btn" data-catclass="uncensored" onclick="filterCatalogClass('uncensored')">🔓 Без цензуры</button>
                                 <button class="class-tab-btn" data-catclass="vision" onclick="filterCatalogClass('vision')">👁️ Зрение</button>
                                 <button class="class-tab-btn" data-catclass="coder" onclick="filterCatalogClass('coder')">💻 Кодинг</button>
                                 <button class="class-tab-btn" data-catclass="embedding" onclick="filterCatalogClass('embedding')">⚡ Эмбеддинги</button>
@@ -2647,6 +2652,7 @@
 
             // 2. Отрисовка специальных категорий
             const specialClasses = [
+                { key: 'uncensored', title: '🔓 Без цензуры и ограничений (Abliterated & Unaligned)', badgeClass: 'tier-flagship' },
                 { key: 'vision', title: '👁️ Зрение (Computer Vision & Multimodal)', badgeClass: 'tier-balanced' },
                 { key: 'coder', title: '💻 Кодинг (Code & Development)', badgeClass: 'tier-flagship' },
                 { key: 'embedding', title: '⚡ Эмбеддинги (RAG & Knowledge Base)', badgeClass: 'tier-light' }
@@ -2984,7 +2990,7 @@
             const currentSelected = modelSelect.value;
 
             // Подсчет счетчиков по классам и по мощности
-            let countAll = 0, countChat = 0, countVision = 0, countCoder = 0, countEmbedding = 0;
+            let countAll = 0, countChat = 0, countVision = 0, countCoder = 0, countEmbedding = 0, countUncensored = 0;
             let countTierAll = 0, countTierLight = 0, countTierBalanced = 0, countTierFlagship = 0, countTierExpert = 0;
 
             allInstalledModelsRaw.forEach(m => {
@@ -2994,6 +3000,7 @@
                 const tier = m.classification ? m.classification.tier : 'flagship';
 
                 if (cls === 'chat') countChat++;
+                else if (cls === 'uncensored') countUncensored++;
                 else if (cls === 'vision') countVision++;
                 else if (cls === 'coder') countCoder++;
                 else if (cls === 'embedding') countEmbedding++;
@@ -3008,6 +3015,8 @@
             if (countAllEl) countAllEl.innerText = countAll;
             const countChatEl = document.getElementById('countChat');
             if (countChatEl) countChatEl.innerText = countChat;
+            const countUncensoredEl = document.getElementById('countUncensored');
+            if (countUncensoredEl) countUncensoredEl.innerText = countUncensored;
             const countVisionEl = document.getElementById('countVision');
             if (countVisionEl) countVisionEl.innerText = countVision;
             const countCoderEl = document.getElementById('countCoder');
