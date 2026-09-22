@@ -1702,6 +1702,186 @@ async function checkModelUpdates(forceRefresh = false) {
 writeLog('INFO', '=== Запуск Qwen Local Server ===');
 ensureOllamaRunning();
 
+// ==========================================
+// ReAct AI Agent утилиты (Deep Research)
+// ==========================================
+
+function callOllamaChat(model, messages, options = {}, onReqCreated = null) {
+    return new Promise((resolve, reject) => {
+        const payload = JSON.stringify({
+            model: model,
+            messages: messages,
+            stream: false,
+            options: {
+                temperature: options.temperature !== undefined ? options.temperature : 0.2,
+                num_ctx: options.num_ctx || 8192,
+                stop: options.stop || undefined
+            }
+        });
+
+        let isDone = false;
+        const req = http.request({
+            hostname: '127.0.0.1',
+            port: OLLAMA_PORT,
+            path: '/api/chat',
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(payload)
+            }
+        }, (res) => {
+            let data = '';
+            res.on('data', chunk => { data += chunk; });
+            res.on('end', () => {
+                isDone = true;
+                try {
+                    const json = JSON.parse(data);
+                    if (json.message) {
+                        resolve(json);
+                    } else if (json.error) {
+                        reject(new Error(json.error));
+                    } else {
+                        reject(new Error('Пустой ответ от Ollama'));
+                    }
+                } catch (e) {
+                    reject(e);
+                }
+            });
+        });
+
+        if (onReqCreated) onReqCreated(req);
+
+        req.on('error', (err) => {
+            if (!isDone) reject(err);
+        });
+
+        req.setTimeout(60000, () => {
+            if (!isDone) {
+                req.destroy();
+                reject(new Error('Таймаут запроса к Ollama (60с)'));
+            }
+        });
+
+        req.write(payload);
+        req.end();
+    });
+}
+
+function streamOllamaChat(model, messages, onChunk, onEnd, onError, options = {}, onReqCreated = null) {
+    const payload = JSON.stringify({
+        model: model,
+        messages: messages,
+        stream: true,
+        options: {
+            temperature: options.temperature !== undefined ? options.temperature : 0.4,
+            num_ctx: options.num_ctx || 16384
+        }
+    });
+
+    let isDone = false;
+    const req = http.request({
+        hostname: '127.0.0.1',
+        port: OLLAMA_PORT,
+        path: '/api/chat',
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(payload)
+        }
+    }, (res) => {
+        let buffer = '';
+        res.on('data', chunk => {
+            buffer += chunk.toString();
+            const lines = buffer.split('\n');
+            buffer = lines.pop();
+            for (const line of lines) {
+                if (!line.trim()) continue;
+                try {
+                    const parsed = JSON.parse(line);
+                    onChunk(parsed);
+                } catch (e) {}
+            }
+        });
+
+        res.on('end', () => {
+            isDone = true;
+            if (buffer.trim()) {
+                try {
+                    const parsed = JSON.parse(buffer);
+                    onChunk(parsed);
+                } catch (e) {}
+            }
+            onEnd();
+        });
+    });
+
+    if (onReqCreated) onReqCreated(req);
+
+    req.on('error', (err) => {
+        if (!isDone) onError(err);
+    });
+
+    req.write(payload);
+    req.end();
+}
+
+function parseReActOutput(text) {
+    let thought = '';
+    let action = '';
+    let actionParam = '';
+
+    // Очищаем от тегов рассуждений <think>...</think>, если модель их возвращает
+    let cleanText = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+    if (!cleanText) cleanText = text;
+
+    // Извлечение мысли Thought:
+    const thoughtMatch = cleanText.match(/Thought:\s*([\s\S]*?)(?=(?:Action:|$))/i);
+    if (thoughtMatch) {
+        thought = thoughtMatch[1].trim();
+    } else {
+        const parts = cleanText.split(/Action:/i);
+        thought = parts[0].trim();
+    }
+
+    // Извлечение действия Action:
+    const actionMatch = cleanText.match(/Action:\s*([a-zA-Z_]+)(?:\s*\(?["']?([\s\S]*?)["']?\s*\)?)?/i);
+    if (actionMatch) {
+        action = actionMatch[1].toLowerCase().trim();
+        actionParam = (actionMatch[2] || '').trim();
+        actionParam = actionParam.replace(/^["'\(]+|["'\)]+$/g, '').trim();
+    }
+
+    if (!action || action === 'none') {
+        if (/finish/i.test(cleanText)) {
+            action = 'finish';
+        } else if (/search/i.test(cleanText)) {
+            action = 'search';
+            const m = cleanText.match(/search\(?["']?([^"'\)\n]+)/i);
+            if (m) actionParam = m[1].trim();
+        } else if (/fetch/i.test(cleanText)) {
+            action = 'fetch';
+            const m = cleanText.match(/https?:\/\/[^\s"'<>\)]+/i);
+            if (m) {
+                action = 'fetch';
+                actionParam = m[0];
+            }
+        } else {
+            action = 'finish';
+        }
+    }
+
+    if (action === 'fetch' && !actionParam.startsWith('http')) {
+        const urlInText = cleanText.match(/https?:\/\/[^\s"'<>\)]+/);
+        if (urlInText) {
+            actionParam = urlInText[0];
+        } else {
+            action = 'finish';
+        }
+    }
+
+    return { thought, action, actionParam };
+}
+
 const server = http.createServer((req, res) => {
     // 1. Логирование событий от фронтенда
     if (req.url === '/api/client-log' && req.method === 'POST') {
@@ -2027,6 +2207,323 @@ const server = http.createServer((req, res) => {
                 res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
                 res.end(JSON.stringify({ error: fetchErr.message }));
             }
+        });
+        return;
+    }
+
+    // 8.1 Agent: Автономный ReAct-агент глубокого исследования (Deep Research Loop)
+    if (req.url === '/api/agent/research' && req.method === 'POST') {
+        readJsonBody(req, async (err, body) => {
+            if (err || !body || !body.query) {
+                res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ error: 'Требуется поле query' }));
+                return;
+            }
+
+            let chatId = body.chat_id || null;
+            const model = body.model || 'qwen3.5:9b';
+            const query = String(body.query).trim();
+            const maxSteps = Math.min(Math.max(parseInt(body.max_steps) || 4, 2), 6);
+            const today = new Date().toISOString().split('T')[0];
+
+            let currentOllamaReq = null;
+            let isAborted = false;
+
+            res.on('close', () => {
+                if (!res.writableEnded) {
+                    isAborted = true;
+                    writeLog('WARN', `[Agent] Клиент разорвал соединение для "${query.substring(0, 30)}", прерываем Ollama...`);
+                    if (currentOllamaReq) {
+                        try { currentOllamaReq.destroy(); } catch(e){}
+                    }
+                }
+            });
+
+            if (!chatId || !db.getChatById(chatId)) {
+                const newChat = db.createChat('Новый диалог', model);
+                chatId = newChat.id;
+            }
+
+            try {
+                db.addMessage(chatId, 'user', query);
+            } catch (dbErr) {
+                writeLog('WARN', `[Agent] Ошибка сохранения сообщения пользователя: ${dbErr.message}`);
+            }
+
+            res.writeHead(200, {
+                'Content-Type': 'application/x-ndjson; charset=utf-8',
+                'Transfer-Encoding': 'chunked',
+                'Cache-Control': 'no-cache, no-transform',
+                'Connection': 'keep-alive'
+            });
+
+            const sendEvent = (obj) => {
+                if (isAborted || res.writableEnded) return;
+                try {
+                    res.write(JSON.stringify(obj) + '\n');
+                } catch (writeErr) {}
+            };
+
+            sendEvent({
+                type: 'init',
+                chatId: chatId,
+                model: model,
+                query: query,
+                maxSteps: maxSteps
+            });
+
+            writeLog('INFO', `[Agent] Запуск Deep Research [${model}] для "${query.substring(0, 50)}" (макс. шагов: ${maxSteps})...`);
+
+            const systemPrompt = `Ты — автономный исследовательский AI-агент ReAct (Reason + Act).
+Твоя цель — глубоко изучить вопрос пользователя, собрать проверенные актуальные факты из интернета и подготовить материал для исчерпывающего аналитического отчета.
+Сегодняшняя дата: ${today}.
+
+ТЕБЕ ДОСТУПНЫ СЛЕДУЮЩИЕ ДЕЙСТВИЯ:
+1. Action: search("поисковый запрос") — выполняет поиск в DuckDuckGo и возвращает заголовки, краткие выдержки и ссылки.
+2. Action: fetch("URL") — загружает и очищает текстовое содержимое конкретной веб-страницы по найденному URL.
+3. Action: finish — завершает сбор информации, когда собрано достаточно фактов для развернутого ответа.
+
+ПРАВИЛА И СТРОГИЙ ФОРМАТ КАЖДОГО ОТВЕТА:
+- Ты должен выводить СТРОГО:
+Thought: [Твои рассуждения: что уже известно, какого конкретного факта не хватает, какой шаг сделать сейчас]
+Action: search("...") ИЛИ Action: fetch("...") ИЛИ Action: finish
+- За один шаг вызывай строго ОДНО действие.
+- Запрос для search пиши кратко и по существу на том языке, на котором больше шансов найти информацию.
+- Не выдумывай факты. Если на шаге 1 получил список ссылок, на шаге 2 изучи наиболее полезную через fetch("URL") или сделай уточняющий поиск.
+- Если у тебя уже есть полные данные, не затягивай — пиши Action: finish.
+- Все мысли (Thought) пиши на русском языке.`;
+
+            const agentMessages = [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: `Вопрос для исследования: "${query}"\nНачни исследование с шага 1 (Thought + Action):` }
+            ];
+
+            const collectedSources = [];
+            const seenUrls = new Set();
+            let researchTrace = `Исследование вопроса: "${query}"\n`;
+            let totalPromptTokens = 0;
+            let totalEvalTokens = 0;
+
+            for (let step = 1; step <= maxSteps; step++) {
+                if (isAborted) break;
+                writeLog('INFO', `[Agent] Шаг ${step}/${maxSteps} рассуждения модели...`);
+
+                let stepResponseText = '';
+                try {
+                    const ollamaRes = await callOllamaChat(model, agentMessages, {
+                        temperature: 0.2,
+                        num_ctx: 8192,
+                        stop: ['\nObservation:', 'Observation:']
+                    }, (r) => { currentOllamaReq = r; });
+
+                    if (ollamaRes.prompt_eval_count) totalPromptTokens += ollamaRes.prompt_eval_count;
+                    if (ollamaRes.eval_count) totalEvalTokens += ollamaRes.eval_count;
+
+                    stepResponseText = (ollamaRes.message && ollamaRes.message.content) ? ollamaRes.message.content.trim() : '';
+                } catch (modelErr) {
+                    writeLog('ERROR', `[Agent] Ошибка на шаге ${step}: ${modelErr.message}`);
+                    sendEvent({ type: 'step_error', step: step, error: modelErr.message });
+                    break;
+                }
+
+                const parsed = parseReActOutput(stepResponseText);
+                const thought = parsed.thought || 'Анализирую собранные сведения...';
+                const action = parsed.action || 'finish';
+                const actionParam = parsed.actionParam || '';
+
+                researchTrace += `\n[Шаг ${step}]\n💭 Мысль: ${thought}\n⚙️ Действие: ${action}${actionParam ? ` ("${actionParam}")` : ''}\n`;
+
+                sendEvent({
+                    type: 'step',
+                    step: step,
+                    totalSteps: maxSteps,
+                    thought: thought,
+                    action: action,
+                    actionParam: actionParam
+                });
+
+                if (action === 'finish') {
+                    writeLog('INFO', `[Agent] Агент решил завершить сбор данных на шаге ${step}.`);
+                    break;
+                }
+
+                let observationText = '';
+                if (action === 'search') {
+                    const searchQuery = actionParam || query;
+                    writeLog('INFO', `[Agent] Шаг ${step}: Поиск в сети: "${searchQuery}"...`);
+                    try {
+                        const searchResults = await performWebSearch(searchQuery, 4, false);
+                        if (searchResults && searchResults.length > 0) {
+                            const newSourcesForStep = [];
+                            const obsLines = [];
+                            for (const item of searchResults) {
+                                if (!seenUrls.has(item.url)) {
+                                    seenUrls.add(item.url);
+                                    const sourceIdx = collectedSources.length + 1;
+                                    const srcObj = {
+                                        id: sourceIdx,
+                                        title: item.title,
+                                        url: item.url,
+                                        snippet: item.snippet
+                                    };
+                                    collectedSources.push(srcObj);
+                                    newSourcesForStep.push(srcObj);
+                                }
+                                obsLines.push(`- [${item.title}] (${item.url}): ${item.snippet}`);
+                            }
+                            observationText = `Результаты поиска (${searchResults.length}):\n` + obsLines.join('\n');
+                            sendEvent({
+                                type: 'observation',
+                                step: step,
+                                action: 'search',
+                                resultsCount: searchResults.length,
+                                sources: newSourcesForStep
+                            });
+                        } else {
+                            observationText = 'По данному запросу результатов не найдено.';
+                            sendEvent({
+                                type: 'observation',
+                                step: step,
+                                action: 'search',
+                                resultsCount: 0,
+                                sources: []
+                            });
+                        }
+                    } catch (searchErr) {
+                        observationText = `Ошибка поиска: ${searchErr.message}`;
+                        sendEvent({ type: 'observation', step: step, action: 'search', error: searchErr.message });
+                    }
+                } else if (action === 'fetch') {
+                    const targetUrl = actionParam;
+                    writeLog('INFO', `[Agent] Шаг ${step}: Чтение страницы: "${targetUrl}"...`);
+                    try {
+                        const pageText = await fetchPageContent(targetUrl, 1800);
+                        if (pageText && pageText.length > 50) {
+                            observationText = `Текст со страницы ${targetUrl} (извлечено ${pageText.length} символов):\n${pageText}`;
+                            const existingSrc = collectedSources.find(s => s.url === targetUrl);
+                            if (existingSrc) {
+                                existingSrc.pageContent = pageText;
+                            } else {
+                                const newSrc = {
+                                    id: collectedSources.length + 1,
+                                    title: targetUrl,
+                                    url: targetUrl,
+                                    snippet: pageText.substring(0, 250) + '...',
+                                    pageContent: pageText
+                                };
+                                collectedSources.push(newSrc);
+                            }
+                            sendEvent({
+                                type: 'observation',
+                                step: step,
+                                action: 'fetch',
+                                url: targetUrl,
+                                contentLength: pageText.length
+                            });
+                        } else {
+                            observationText = `Не удалось извлечь читаемый текст с ${targetUrl}.`;
+                            sendEvent({ type: 'observation', step: step, action: 'fetch', url: targetUrl, contentLength: 0 });
+                        }
+                    } catch (fetchErr) {
+                        observationText = `Ошибка загрузки страницы: ${fetchErr.message}`;
+                        sendEvent({ type: 'observation', step: step, action: 'fetch', error: fetchErr.message });
+                    }
+                } else {
+                    observationText = `Неизвестное действие "${action}". Используй search("запрос"), fetch("URL") или finish.`;
+                }
+
+                researchTrace += `📄 Наблюдение: ${observationText.substring(0, 300)}...\n`;
+
+                agentMessages.push({ role: 'assistant', content: stepResponseText });
+                agentMessages.push({ role: 'user', content: `Observation: ${observationText}\nСледующий шаг:` });
+            }
+
+            if (isAborted) {
+                try { res.end(); } catch(e){}
+                return;
+            }
+
+            writeLog('INFO', `[Agent] Начало финального синтеза отчета по "${query.substring(0, 40)}"...`);
+            sendEvent({ type: 'final_start', totalSourcesFound: collectedSources.length });
+
+            const materialsText = collectedSources.map((s, idx) => {
+                const content = s.pageContent || s.snippet || '';
+                return `[${idx + 1}] "${s.title}" (${s.url})\nФрагмент:\n${content}`;
+            }).join('\n\n');
+
+            const finalPrompt = `Ты — ведущий эксперт-аналитик и технический исследователь.
+Твоя задача — составить подробный, исчерпывающий и структурированный аналитический отчет по запросу: "${query}".
+
+СОБРАННЫЕ В ХОДЕ АВТОНОМНОГО ИССЛЕДОВАНИЯ МАТЕРИАЛЫ (Дата: ${today}):
+${materialsText || 'Прямых ссылок не найдено, используй свои экспертные знания.'}
+
+ОБЯЗАТЕЛЬНЫЕ ТРЕБОВАНИЯ К ОТЧЕТУ:
+1. Пиши на русском языке с четкой структурой (краткое резюме / суть, подробный разбор по пунктам, сравнительные аспекты, выводы и рекомендации).
+2. Обязательно делай ссылки на факты из материалов выше с помощью сносок [1], [2] и т.д.
+3. Не лей воду: давай точные цифры, технические характеристики, даты и аргументы.
+4. Ответ должен быть полным, чтобы пользователю не требовалось искать дополнительные данные.`;
+
+            const finalMessages = [
+                { role: 'system', content: finalPrompt },
+                { role: 'user', content: `Подготовь итоговый детальный отчет по вопросу: "${query}"` }
+            ];
+
+            let fullFinalAnswer = '';
+            let finalPromptTokens = 0;
+            let finalEvalTokens = 0;
+
+            streamOllamaChat(
+                model,
+                finalMessages,
+                (chunk) => {
+                    if (isAborted) return;
+                    if (chunk.message && chunk.message.content) {
+                        fullFinalAnswer += chunk.message.content;
+                        sendEvent({ type: 'token', content: chunk.message.content });
+                    }
+                    if (chunk.prompt_eval_count) finalPromptTokens = chunk.prompt_eval_count;
+                    if (chunk.eval_count) finalEvalTokens = chunk.eval_count;
+                },
+                () => {
+                    if (isAborted) return;
+                    totalPromptTokens += finalPromptTokens;
+                    totalEvalTokens += finalEvalTokens;
+
+                    try {
+                        db.addMessage(chatId, 'assistant', fullFinalAnswer, researchTrace, totalPromptTokens, totalEvalTokens);
+
+                        const curChat = db.getChatById(chatId);
+                        if (curChat && curChat.title === 'Новый диалог') {
+                            let cleanTitle = query.replace(/[#*`\n]/g, ' ').trim();
+                            if (cleanTitle.length > 36) cleanTitle = cleanTitle.substring(0, 36).trim() + '...';
+                            if (cleanTitle) {
+                                db.updateChat(chatId, { title: cleanTitle });
+                                writeLog('INFO', `[Agent] Чат ${chatId} переименован в "${cleanTitle}"`);
+                            }
+                        }
+                    } catch (dbErr) {
+                        writeLog('WARN', `[Agent] Ошибка сохранения ответа агента: ${dbErr.message}`);
+                    }
+
+                    writeLog('INFO', `[Agent] Исследование завершено (${fullFinalAnswer.length} симв., ${collectedSources.length} источников).`);
+                    sendEvent({
+                        type: 'final_done',
+                        fullContent: fullFinalAnswer,
+                        allSources: collectedSources,
+                        promptTokens: totalPromptTokens,
+                        evalTokens: totalEvalTokens
+                    });
+                    try { res.end(); } catch(e){}
+                },
+                (streamErr) => {
+                    if (isAborted) return;
+                    writeLog('ERROR', `[Agent] Сбой финального стриминга: ${streamErr.message}`);
+                    sendEvent({ type: 'error', message: streamErr.message });
+                    try { res.end(); } catch(e){}
+                },
+                { num_ctx: 16384 },
+                (r) => { currentOllamaReq = r; }
+            );
         });
         return;
     }

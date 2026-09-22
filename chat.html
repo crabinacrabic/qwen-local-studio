@@ -1070,6 +1070,133 @@
             box-shadow: 0 0 12px rgba(14, 165, 233, 0.4);
         }
 
+        /* Кнопка режима глубокого автономного исследования (Deep Research) */
+        .btn-research-toggle {
+            background: var(--chat-bg);
+            color: var(--text-secondary);
+            border: 1px solid var(--border-color);
+            padding: 8px 14px;
+            border-radius: 8px;
+            font-size: 0.88rem;
+            cursor: pointer;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s ease;
+            user-select: none;
+        }
+
+        .btn-research-toggle:hover {
+            border-color: #c084fc;
+            color: #c084fc;
+        }
+
+        .btn-research-toggle.active {
+            background: rgba(168, 85, 247, 0.2);
+            color: #e9d5ff;
+            border-color: #a855f7;
+            box-shadow: 0 0 14px rgba(168, 85, 247, 0.5);
+        }
+
+        /* Интерактивный блок автономного исследования (ReAct Stepper) */
+        .research-container {
+            background: rgba(168, 85, 247, 0.08);
+            border: 1px solid rgba(168, 85, 247, 0.35);
+            border-radius: 10px;
+            padding: 10px 14px;
+            margin-bottom: 12px;
+            font-size: 0.86rem;
+        }
+
+        .research-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+            font-weight: 600;
+            color: #d8b4fe;
+            user-select: none;
+        }
+
+        .research-header-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .research-badge {
+            background: rgba(168, 85, 247, 0.25);
+            color: #f3e8ff;
+            font-size: 0.76rem;
+            padding: 2px 9px;
+            border-radius: 12px;
+            font-weight: 600;
+            border: 1px solid rgba(168, 85, 247, 0.4);
+        }
+
+        .research-steps-list {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid rgba(168, 85, 247, 0.2);
+            font-size: 0.83rem;
+            max-height: 280px;
+            overflow-y: auto;
+            line-height: 1.5;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .research-steps-list.hidden {
+            display: none;
+        }
+
+        .research-step-item {
+            padding: 8px 12px;
+            background: rgba(0, 0, 0, 0.35);
+            border-radius: 6px;
+            border-left: 3px solid #a855f7;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .research-step-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-weight: 600;
+            color: #e9d5ff;
+        }
+
+        .research-step-thought {
+            color: #cbd5e1;
+            font-size: 0.82rem;
+            line-height: 1.4;
+        }
+
+        .research-step-action {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-family: Consolas, monospace;
+            font-size: 0.8rem;
+            background: rgba(168, 85, 247, 0.18);
+            color: #d8b4fe;
+            padding: 3px 8px;
+            border-radius: 4px;
+            width: fit-content;
+        }
+
+        .research-step-obs {
+            color: #94a3b8;
+            font-size: 0.79rem;
+            border-left: 2px dashed rgba(168, 85, 247, 0.35);
+            padding-left: 8px;
+            margin-top: 2px;
+        }
+
         /* Стили для блока веб-источников */
         .web-source-box {
             background: rgba(14, 165, 233, 0.08);
@@ -1735,6 +1862,9 @@
                 </div>
             </div>
             <div class="header-controls">
+                <button id="toggleDeepResearchBtn" class="btn-research-toggle" title="Включить многошаговый автономный ReAct-агент для глубокого исследования тем">
+                    <span>🕵️ Deep Research: ВЫКЛ</span>
+                </button>
                 <button id="toggleWebBtn" class="btn-web-toggle" title="Включить / отключить поиск в живом интернете">
                     <span>🌐 Интернет: ВЫКЛ</span>
                 </button>
@@ -2053,6 +2183,10 @@
         let autoCompactEnabled = localStorage.getItem('auto_compact_enabled') !== '0';
         let isCompacting = false;
 
+        // Элемент переключения Deep Research (ReAct Агент)
+        const toggleDeepResearchBtn = document.getElementById('toggleDeepResearchBtn');
+        let deepResearchEnabled = localStorage.getItem('deep_research_enabled') === '1';
+
         // Элемент переключения Веб-поиска (Интернет)
         const toggleWebBtn = document.getElementById('toggleWebBtn');
         let webSearchEnabled = localStorage.getItem('web_search_enabled') === '1';
@@ -2176,6 +2310,30 @@
             logMessage('INFO', `RAG переключен в состояние: ${ragEnabled ? 'ВКЛ' : 'ВЫКЛ'}`);
             showToast(ragEnabled ? '📚 База знаний (RAG) ВКЛЮЧЕНА' : '📚 База знаний (RAG) ВЫКЛЮЧЕНА');
         });
+
+        // Обновление состояния кнопки Deep Research (Автономный ReAct Агент)
+        function updateDeepResearchButtonUI() {
+            if (!toggleDeepResearchBtn) return;
+            if (deepResearchEnabled) {
+                toggleDeepResearchBtn.classList.add('active');
+                toggleDeepResearchBtn.innerHTML = '<span>🕵️ Deep Research: ВКЛ</span>';
+                toggleDeepResearchBtn.title = 'Режим автономного исследования (ReAct Loop) ВКЛЮЧЕН (нажмите, чтобы выключить)';
+            } else {
+                toggleDeepResearchBtn.classList.remove('active');
+                toggleDeepResearchBtn.innerHTML = '<span>🕵️ Deep Research: ВЫКЛ</span>';
+                toggleDeepResearchBtn.title = 'Режим автономного исследования (ReAct Loop) ВЫКЛЮЧЕН (нажмите, чтобы включить)';
+            }
+        }
+
+        if (toggleDeepResearchBtn) {
+            toggleDeepResearchBtn.addEventListener('click', () => {
+                deepResearchEnabled = !deepResearchEnabled;
+                localStorage.setItem('deep_research_enabled', deepResearchEnabled ? '1' : '0');
+                updateDeepResearchButtonUI();
+                logMessage('INFO', `Режим Deep Research переключен в состояние: ${deepResearchEnabled ? 'ВКЛ' : 'ВЫКЛ'}`);
+                showToast(deepResearchEnabled ? '🕵️ Deep Research ВКЛЮЧЕН (автономный ReAct-агент)' : '🕵️ Deep Research ВЫКЛЮЧЕН (быстрый чат)');
+            });
+        }
 
         // Обновление состояния кнопки Веб-поиска (Интернет)
         function updateWebButtonUI() {
@@ -3574,6 +3732,23 @@
             sourcesContainer.className = 'rag-sources-container';
             sourcesContainer.style.display = 'none';
 
+            const researchContainer = document.createElement('div');
+            researchContainer.className = 'research-container';
+            researchContainer.style.display = 'none';
+            researchContainer.innerHTML = `
+                <div class="research-header">
+                    <span class="research-header-title">🕵️ Deep Research (ReAct Loop) <span class="pulse">●</span></span>
+                    <span class="research-badge">Инициализация...</span>
+                </div>
+                <div class="research-steps-list"></div>
+            `;
+            const researchHeader = researchContainer.querySelector('.research-header');
+            const researchStepsList = researchContainer.querySelector('.research-steps-list');
+            const researchBadge = researchContainer.querySelector('.research-badge');
+            researchHeader.onclick = () => {
+                researchStepsList.classList.toggle('hidden');
+            };
+
             const thinkContainer = document.createElement('div');
             thinkContainer.className = 'thinking-container';
             thinkContainer.style.display = 'none';
@@ -3598,12 +3773,13 @@
 
             msgDiv.appendChild(headerDiv);
             msgDiv.appendChild(sourcesContainer);
+            msgDiv.appendChild(researchContainer);
             msgDiv.appendChild(thinkContainer);
             msgDiv.appendChild(bubbleDiv);
             chatMessages.appendChild(msgDiv);
             chatMessages.scrollTop = chatMessages.scrollHeight;
 
-            return { sourcesContainer, thinkContainer, thinkToggle, thinkContent, bubbleDiv };
+            return { sourcesContainer, researchContainer, researchHeader, researchStepsList, researchBadge, thinkContainer, thinkToggle, thinkContent, bubbleDiv };
         }
 
         async function sendMessage() {
@@ -3636,6 +3812,129 @@
             logMessage('INFO', `Запрос к модели [${selectedModel}]: "${text.substring(0, 50)}..."`);
 
             const assistantUi = createAssistantMessage(selectedModel);
+
+            // 0. Автономный ReAct-агент глубокого исследования (Deep Research)
+            if (deepResearchEnabled) {
+                assistantUi.bubbleDiv.innerText = '🕵️ Запуск автономного исследования темы...';
+                assistantUi.researchContainer.style.display = 'block';
+
+                let collectedWebSources = [];
+                let fullAnswer = '';
+                let currentStepEl = null;
+
+                try {
+                    const res = await fetch('/api/agent/research', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            chat_id: currentChatId,
+                            model: selectedModel,
+                            query: text,
+                            max_steps: 4
+                        })
+                    });
+
+                    if (!res.ok) {
+                        throw new Error(`Ошибка сервера: HTTP ${res.status}`);
+                    }
+
+                    const reader = res.body.getReader();
+                    const decoder = new TextDecoder();
+                    let streamBuffer = '';
+
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+
+                        streamBuffer += decoder.decode(value, { stream: true });
+                        const lines = streamBuffer.split('\n');
+                        streamBuffer = lines.pop();
+
+                        for (const line of lines) {
+                            if (!line.trim()) continue;
+                            try {
+                                const ev = JSON.parse(line);
+
+                                if (ev.type === 'init') {
+                                    if (ev.chatId && !currentChatId) {
+                                        currentChatId = ev.chatId;
+                                    }
+                                    assistantUi.researchBadge.innerText = `План: до ${ev.maxSteps} шагов`;
+                                } else if (ev.type === 'step') {
+                                    assistantUi.researchBadge.innerText = `Шаг ${ev.step} из ${ev.totalSteps}`;
+                                    assistantUi.bubbleDiv.innerText = `🕵️ Шаг ${ev.step}: ${ev.action === 'finish' ? 'завершаю сбор данных...' : (ev.action === 'search' ? 'ищу в сети...' : 'читаю страницу...')}`;
+
+                                    const stepItem = document.createElement('div');
+                                    stepItem.className = 'research-step-item';
+                                    const actionIcon = ev.action === 'search' ? '🔍' : (ev.action === 'fetch' ? '📄' : '🏁');
+                                    const actionLabel = ev.action === 'search' ? `search("${escapeHtml(ev.actionParam)}")` : (ev.action === 'fetch' ? `fetch("${escapeHtml(ev.actionParam)}")` : 'finish');
+
+                                    stepItem.innerHTML = `
+                                        <div class="research-step-header">
+                                            <span>Шаг ${ev.step}</span>
+                                            <span class="research-step-action">${actionIcon} ${actionLabel}</span>
+                                        </div>
+                                        <div class="research-step-thought">💭 ${escapeHtml(ev.thought)}</div>
+                                        <div class="research-step-obs">⏳ Выполняю действие...</div>
+                                    `;
+                                    assistantUi.researchStepsList.appendChild(stepItem);
+                                    currentStepEl = stepItem;
+                                    chatMessages.scrollTop = chatMessages.scrollHeight;
+                                } else if (ev.type === 'observation') {
+                                    if (currentStepEl) {
+                                        const obsEl = currentStepEl.querySelector('.research-step-obs');
+                                        if (obsEl) {
+                                            if (ev.action === 'search') {
+                                                obsEl.innerText = `✅ Найдено ${ev.resultsCount || 0} веб-страниц`;
+                                            } else if (ev.action === 'fetch') {
+                                                obsEl.innerText = `✅ Загружено ${ev.contentLength || 0} симв. текста`;
+                                            } else if (ev.error) {
+                                                obsEl.innerText = `⚠️ ${ev.error}`;
+                                            }
+                                        }
+                                    }
+
+                                    if (ev.sources && ev.sources.length > 0) {
+                                        collectedWebSources = [...collectedWebSources, ...ev.sources];
+                                        renderWebSources(assistantUi.sourcesContainer, collectedWebSources);
+                                    }
+                                    chatMessages.scrollTop = chatMessages.scrollHeight;
+                                } else if (ev.type === 'final_start') {
+                                    assistantUi.researchBadge.innerText = '✨ Синтез отчета';
+                                    assistantUi.bubbleDiv.innerText = 'Формирую итоговый аналитический отчет...';
+                                } else if (ev.type === 'token') {
+                                    fullAnswer += ev.content;
+                                    assistantUi.bubbleDiv.innerText = fullAnswer;
+                                    chatMessages.scrollTop = chatMessages.scrollHeight;
+                                } else if (ev.type === 'final_done') {
+                                    assistantUi.researchBadge.innerText = '✅ Завершено';
+                                    assistantUi.researchHeader.innerHTML = `<span>🕵️ Deep Research (${ev.allSources ? ev.allSources.length : 0} ист.)</span> <span class="research-badge" style="background:rgba(46,160,67,0.25); color:#4ade80;">Готово</span>`;
+                                    
+                                    if (ev.allSources && ev.allSources.length > 0) {
+                                        renderWebSources(assistantUi.sourcesContainer, ev.allSources);
+                                    }
+
+                                    const totalTokens = (ev.promptTokens || 0) + (ev.evalTokens || 0);
+                                    const maxCtx = getModelContextLimit(selectedModel);
+                                    if (totalTokens > 0) updateContextMeter(totalTokens, maxCtx);
+
+                                    chatHistory.push({ role: 'assistant', content: fullAnswer });
+                                    setTimeout(() => loadChatsList(false), 800);
+                                } else if (ev.type === 'error') {
+                                    assistantUi.bubbleDiv.innerText = `Ошибка агента: ${ev.message}`;
+                                }
+                            } catch (e) {}
+                        }
+                    }
+                } catch (researchErr) {
+                    assistantUi.bubbleDiv.innerText = `Ошибка исследования: ${researchErr.message}`;
+                    logMessage('ERROR', `[AgentUI] ${researchErr.message}`);
+                } finally {
+                    sendBtn.disabled = false;
+                    promptInput.focus();
+                }
+                return;
+            }
 
             // 1. Поиск в интернете (Web Search) или прямое чтение ссылки (Web Fetch)
             let ragSources = [];
@@ -4095,12 +4394,19 @@ ${contextBlocks.join('\n\n')}
                             assistDiv.className = 'message assistant';
                             let thinkingHtml = '';
                             if (msg.thinking) {
+                                const isResearch = msg.thinking.includes('Исследование вопроса:') || msg.thinking.includes('[Шаг ');
+                                const title = isResearch ? '🕵️ Автономное исследование ReAct (нажми для просмотра шагов)' : '💭 Рассуждения (нажми, чтобы скрыть/показать)';
+                                const containerClass = isResearch ? 'research-container' : 'think-container';
+                                const toggleClass = isResearch ? 'research-header' : 'think-toggle';
+                                const contentClass = isResearch ? 'research-steps-list' : 'think-content';
+                                
                                 thinkingHtml = `
-                                    <div class="think-container" style="display:block;">
-                                        <div class="think-toggle" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? 'block' : 'none'">
-                                            <span>💭 Рассуждения (нажми, чтобы скрыть/показать)</span>
+                                    <div class="${containerClass}" style="display:block;">
+                                        <div class="${toggleClass}" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? 'block' : 'none'">
+                                            <span>${title}</span>
+                                            ${isResearch ? '<span class="research-badge" style="background:rgba(46,160,67,0.25); color:#4ade80;">Завершено</span>' : ''}
                                         </div>
-                                        <div class="think-content" style="display:none;">${escapeHtml(msg.thinking)}</div>
+                                        <div class="${contentClass}" style="display:none; white-space:pre-wrap; font-family:Consolas,monospace; font-size:0.83rem; padding:10px; color:#cbd5e1;">${escapeHtml(msg.thinking)}</div>
                                     </div>
                                 `;
                             }
@@ -4305,6 +4611,7 @@ ${contextBlocks.join('\n\n')}
             loadInstalledModels();
             updateRagButtonUI();
             updateWebButtonUI();
+            updateDeepResearchButtonUI();
             loadRagDocuments();
             loadContextLimits();
             loadChatsList(true);
