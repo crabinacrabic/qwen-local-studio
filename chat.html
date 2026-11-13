@@ -1887,6 +1887,154 @@
                 margin: 0 10px -1px 10px;
             }
         }
+
+        /* Stage 3: Локальный импортер GGUF и Hugging Face */
+        .gguf-importer-section {
+            border-top: 1px solid var(--border-color);
+            padding-top: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .gguf-section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .gguf-grid-box {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+            gap: 10px;
+        }
+
+        .gguf-subcard {
+            background: rgba(13, 17, 23, 0.7);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 10px 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .gguf-dropzone {
+            border: 2px dashed rgba(139, 92, 246, 0.45);
+            border-radius: 8px;
+            padding: 14px 12px;
+            text-align: center;
+            background: rgba(139, 92, 246, 0.06);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .gguf-dropzone:hover, .gguf-dropzone.dragover {
+            border-color: #a78bfa;
+            background: rgba(139, 92, 246, 0.16);
+        }
+
+        .hf-results-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            max-height: 220px;
+            overflow-y: auto;
+        }
+
+        .hf-file-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 6px;
+            padding: 7px 10px;
+            font-size: 0.81rem;
+            flex-wrap: wrap;
+        }
+
+        .gguf-files-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-height: 360px;
+            overflow-y: auto;
+        }
+
+        .gguf-card {
+            background: rgba(13, 17, 23, 0.85);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 10px 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .gguf-card-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .gguf-meta-pills {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-top: 4px;
+        }
+
+        .gguf-pill {
+            font-size: 0.72rem;
+            padding: 2px 7px;
+            border-radius: 999px;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-secondary);
+        }
+
+        .gguf-controls-row {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .gguf-input-sm {
+            background: var(--chat-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            border-radius: 6px;
+            padding: 5px 8px;
+            font-size: 0.8rem;
+            outline: none;
+        }
+
+        .gguf-input-sm:focus {
+            border-color: #a78bfa;
+        }
+
+        .gguf-modelfile-pre {
+            background: #090d13;
+            border: 1px solid rgba(139, 92, 246, 0.35);
+            border-radius: 6px;
+            padding: 8px 10px;
+            font-size: 0.76rem;
+            font-family: Consolas, Monaco, monospace;
+            color: #c9d1d9;
+            white-space: pre-wrap;
+            word-break: break-word;
+            max-height: 220px;
+            overflow-y: auto;
+            margin: 0;
+        }
     </style>
 </head>
 <body>
@@ -1997,6 +2145,67 @@
                 <div class="progress-bar-bg">
                     <div id="dlProgressBar" class="progress-bar-fill"></div>
                 </div>
+            </div>
+
+            <!-- Stage 3: Импорт локальных .gguf и прямая загрузка с Hugging Face -->
+            <div class="gguf-importer-section">
+                <div class="gguf-section-header">
+                    <div class="panel-section-title" style="margin-bottom: 0;">📦 Импортер GGUF и Hugging Face (<code style="font-size:0.8em; color:#c4b5fd;">models/</code>)</div>
+                    <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                        <span id="ggufCountBadge" class="gguf-pill">Файлов GGUF: 0</span>
+                        <button id="refreshGgufBtn" type="button" class="btn-check-updates-header" title="Пересканировать папку models/ и обновить метаданные GGUF">🔄 Сканировать models/</button>
+                    </div>
+                </div>
+
+                <div class="gguf-grid-box">
+                    <!-- Drag-and-Drop локальных GGUF в models/ -->
+                    <div class="gguf-subcard">
+                        <div style="font-size: 0.83rem; font-weight: 600; color: #e2d9fc;">🗂️ Локальный GGUF ➔ Ollama</div>
+                        <div id="ggufDropzone" class="gguf-dropzone">
+                            <div style="font-size: 0.86rem; font-weight: 600; color: #ddd6fe;">📥 Перетащите <code style="color:#a78bfa;">.gguf</code> сюда или нажмите для выбора</div>
+                            <div style="font-size: 0.74rem; color: var(--text-secondary); margin-top: 4px;">Файл сохранится в <code>models/</code> потоково без нагрузки на RAM</div>
+                            <input type="file" id="ggufFileInput" accept=".gguf" style="display: none;">
+                        </div>
+                        <div id="ggufUploadProgressBox" class="progress-box" style="display: none;">
+                            <div class="progress-header">
+                                <span id="ggufUploadStatusText">Копирование .gguf в models/...</span>
+                                <span id="ggufUploadPercentText" style="color: #a78bfa;">0%</span>
+                            </div>
+                            <div class="progress-bar-bg">
+                                <div id="ggufUploadProgressBar" class="progress-bar-fill" style="background: #8b5cf6;"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Прямой загрузчик с Hugging Face -->
+                    <div class="gguf-subcard">
+                        <div style="display:flex; justify-content:space-between; align-items:center; gap:6px;">
+                            <span style="font-size: 0.83rem; font-weight: 600; color: #93c5fd;">🤗 Скачать с Hugging Face</span>
+                            <button id="hfTokenToggleBtn" type="button" class="gguf-pill" style="cursor:pointer;">🔑 Токен (опц.)</button>
+                        </div>
+                        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                            <input type="text" id="hfUrlInput" class="gguf-input-sm" style="flex:1; min-width:180px;" placeholder="owner/repo или ссылка на .gguf">
+                            <button id="hfInspectBtn" type="button" class="btn-download" style="background:#2563eb; padding:5px 12px; font-size:0.8rem;">🔍 Найти</button>
+                        </div>
+                        <input type="password" id="hfTokenInput" class="gguf-input-sm" style="display:none;" placeholder="hf_... (только для закрытых моделей)">
+                        <div id="hfDownloadProgressBox" class="progress-box" style="display: none;">
+                            <div class="progress-header">
+                                <span id="hfDownloadStatusText">Подключение к Hugging Face...</span>
+                                <div style="display:flex; align-items:center; gap:8px;">
+                                    <span id="hfDownloadPercentText" style="color: #4ade80;">0%</span>
+                                    <button id="hfCancelDownloadBtn" type="button" class="gguf-pill" style="cursor:pointer; border-color:#f85149; color:#fca5a5;">⏹️ Отмена</button>
+                                </div>
+                            </div>
+                            <div class="progress-bar-bg">
+                                <div id="hfDownloadProgressBar" class="progress-bar-fill"></div>
+                            </div>
+                        </div>
+                        <div id="hfInspectResult" class="hf-results-list"></div>
+                    </div>
+                </div>
+
+                <!-- Список .gguf файлов в models/ с авто-Modelfile и кнопкой импорта -->
+                <div id="ggufFilesList" class="gguf-files-list"></div>
             </div>
 
             <div style="border-top: 1px solid var(--border-color); padding-top: 12px;">
@@ -2646,6 +2855,7 @@
             if (isHidden) {
                 ragPanel.style.display = 'none';
                 renderCards();
+                loadGgufModels();
             }
         });
 
@@ -5027,10 +5237,485 @@ ${contextBlocks.join('\n\n')}
                 .replace(/"/g, "&quot;");
         }
 
+        // ==========================================
+        // Stage 3: Локальный импортер GGUF и Hugging Face
+        // ==========================================
+        const ggufDropzone = document.getElementById('ggufDropzone');
+        const ggufFileInput = document.getElementById('ggufFileInput');
+        const ggufFilesList = document.getElementById('ggufFilesList');
+        const ggufCountBadge = document.getElementById('ggufCountBadge');
+        const refreshGgufBtn = document.getElementById('refreshGgufBtn');
+        const ggufUploadProgressBox = document.getElementById('ggufUploadProgressBox');
+        const ggufUploadStatusText = document.getElementById('ggufUploadStatusText');
+        const ggufUploadPercentText = document.getElementById('ggufUploadPercentText');
+        const ggufUploadProgressBar = document.getElementById('ggufUploadProgressBar');
+        const hfUrlInput = document.getElementById('hfUrlInput');
+        const hfInspectBtn = document.getElementById('hfInspectBtn');
+        const hfTokenToggleBtn = document.getElementById('hfTokenToggleBtn');
+        const hfTokenInput = document.getElementById('hfTokenInput');
+        const hfInspectResult = document.getElementById('hfInspectResult');
+        const hfDownloadProgressBox = document.getElementById('hfDownloadProgressBox');
+        const hfDownloadStatusText = document.getElementById('hfDownloadStatusText');
+        const hfDownloadPercentText = document.getElementById('hfDownloadPercentText');
+        const hfDownloadProgressBar = document.getElementById('hfDownloadProgressBar');
+        const hfCancelDownloadBtn = document.getElementById('hfCancelDownloadBtn');
+
+        let ggufFilesCache = [];
+        let ggufTemplatesCache = [];
+        let hfFilesCache = [];
+        let hfPollTimer = null;
+
+        function formatBytesHuman(bytes) {
+            const n = Number(bytes || 0);
+            if (n >= 1024 ** 3) return (n / (1024 ** 3)).toFixed(2) + ' GB';
+            if (n >= 1024 ** 2) return (n / (1024 ** 2)).toFixed(1) + ' MB';
+            if (n >= 1024) return (n / 1024).toFixed(1) + ' KB';
+            return n + ' B';
+        }
+
+        function renderHfDownloadState(job) {
+            if (!job || !hfDownloadProgressBox) return;
+            if (job.status === 'idle') {
+                hfDownloadProgressBox.style.display = 'none';
+                return;
+            }
+            hfDownloadProgressBox.style.display = 'flex';
+            const doneStr = formatBytesHuman(job.downloadedBytes);
+            const totStr = job.totalBytes > 0 ? formatBytesHuman(job.totalBytes) : '?';
+            const pct = job.percent || 0;
+            hfDownloadProgressBar.style.width = pct + '%';
+            hfDownloadPercentText.innerText = pct + '%';
+
+            if (job.status === 'connecting') {
+                hfDownloadStatusText.innerText = `Подключение для ${job.filename}...`;
+            } else if (job.status === 'downloading') {
+                hfDownloadStatusText.innerText = `HF ➔ models/${job.filename}: ${doneStr} / ${totStr} (${job.speedMBps || 0} MB/s)`;
+            } else if (job.status === 'completed') {
+                hfDownloadProgressBar.style.width = '100%';
+                hfDownloadPercentText.innerText = '100%';
+                hfDownloadStatusText.innerText = `✅ Скачано в models/${job.filename} — готово к импорту в Ollama!`;
+            } else if (job.status === 'cancelled') {
+                hfDownloadStatusText.innerText = `⏹️ Загрузка ${job.filename} отменена.`;
+            } else if (job.status === 'error') {
+                hfDownloadStatusText.innerText = `❌ Ошибка: ${job.error || 'сбой загрузки'}`;
+            }
+        }
+
+        function startHfPolling() {
+            if (hfPollTimer) return;
+            hfPollTimer = setInterval(async () => {
+                try {
+                    const res = await fetch('/api/models/hf/status', { cache: 'no-store' });
+                    if (!res.ok) return;
+                    const data = await res.json();
+                    const job = data.job;
+                    renderHfDownloadState(job);
+                    if (!job || !job.active) {
+                        clearInterval(hfPollTimer);
+                        hfPollTimer = null;
+                        if (job && job.status === 'completed') {
+                            showToast(`✅ ${job.filename} скачан в models/`);
+                            await loadGgufModels();
+                        }
+                    }
+                } catch (_) {}
+            }, 700);
+        }
+
+        function renderGgufFilesList() {
+            if (!ggufFilesList) return;
+            if (ggufCountBadge) ggufCountBadge.innerText = `Файлов GGUF: ${ggufFilesCache.length}`;
+
+            if (ggufFilesCache.length === 0) {
+                ggufFilesList.innerHTML = '<div style="font-size:0.8rem; color:var(--text-secondary); text-align:center; padding:8px;">Папка <code>models/</code> пока пуста — перетащите <code>.gguf</code> файл или скачайте с Hugging Face выше.</div>';
+                return;
+            }
+
+            ggufFilesList.innerHTML = '';
+            ggufFilesCache.forEach((f, idx) => {
+                const card = document.createElement('div');
+                card.className = 'gguf-card';
+                const arch = f.ggufMeta && f.ggufMeta.architecture ? f.ggufMeta.architecture : 'gguf';
+                const compat = f.compatibility || { badge: '💾 ' + f.sizeGB + ' GB', color: '#8b949e', text: '' };
+                const tmplOptions = (ggufTemplatesCache.length ? ggufTemplatesCache : [
+                    { id: 'chatml', label: 'ChatML' },
+                    { id: 'llama3', label: 'Llama 3' },
+                    { id: 'mistral', label: 'Mistral' },
+                    { id: 'gemma2', label: 'Gemma 2' },
+                    { id: 'deepseek', label: 'DeepSeek' },
+                    { id: 'auto', label: 'Авто (из GGUF)' }
+                ]).map(t => `<option value="${escapeHtml(t.id)}" ${t.id === f.detectedTemplate ? 'selected' : ''}>${escapeHtml(t.label)}</option>`).join('');
+
+                const ctxOptions = [4096, 8192, 16384, 32768].map(c =>
+                    `<option value="${c}" ${c === (f.recommendedNumCtx || 32768) ? 'selected' : ''}>ctx: ${c}</option>`
+                ).join('');
+
+                card.innerHTML = `
+                    <div class="gguf-card-top">
+                        <div>
+                            <div style="font-weight:700; font-size:0.88rem; color:#f0f6fc; word-break:break-word;">🧩 ${escapeHtml(f.filename)}</div>
+                            <div class="gguf-meta-pills">
+                                <span class="gguf-pill">⚖️ ${escapeHtml(formatBytesHuman(f.sizeBytes))}</span>
+                                <span class="gguf-pill" style="border-color:${escapeHtml(compat.color)}; color:${escapeHtml(compat.color)};" title="${escapeHtml(compat.text)}">${escapeHtml(compat.badge)}</span>
+                                <span class="gguf-pill">🏛️ arch: ${escapeHtml(arch)}</span>
+                                <span class="gguf-pill" style="color:#c4b5fd; border-color:rgba(139,92,246,0.45);">📐 ${escapeHtml(f.detectedTemplateLabel || f.detectedTemplate)}</span>
+                                ${f.alreadyImported ? '<span class="gguf-pill" style="color:#4ade80; border-color:rgba(46,160,67,0.45);">✅ В Ollama</span>' : ''}
+                            </div>
+                        </div>
+                        <button type="button" class="btn-delete-model" data-act="delete" data-idx="${idx}" title="Удалить .gguf с диска">🗑️</button>
+                    </div>
+                    <div class="gguf-controls-row">
+                        <input type="text" id="ggufName_${idx}" class="gguf-input-sm" style="flex:1; min-width:160px;" value="${escapeHtml(f.suggestedOllamaName)}" title="Имя модели для Ollama (тег)">
+                        <select id="ggufTmpl_${idx}" class="gguf-input-sm" data-act="tmpl-change" data-idx="${idx}" title="Семейство шаблона Modelfile">${tmplOptions}</select>
+                        <select id="ggufCtx_${idx}" class="gguf-input-sm" data-act="ctx-change" data-idx="${idx}" title="Лимит контекста (num_ctx)">${ctxOptions}</select>
+                        <button type="button" class="btn-manage" data-act="preview" data-idx="${idx}" style="padding:5px 10px; font-size:0.78rem;">📄 Modelfile</button>
+                        <button type="button" class="btn-download" data-act="import" data-idx="${idx}" style="background:#7c3aed; padding:5px 12px; font-size:0.8rem;">🚀 Импорт в Ollama</button>
+                    </div>
+                    <div id="ggufStatus_${idx}" style="display:none; font-size:0.78rem; color:#93c5fd;"></div>
+                    <pre id="ggufPre_${idx}" class="gguf-modelfile-pre" style="display:none;">${escapeHtml(f.modelfilePreview || '')}</pre>
+                `;
+                ggufFilesList.appendChild(card);
+            });
+        }
+
+        async function loadGgufModels() {
+            try {
+                const res = await fetch('/api/models/gguf', { cache: 'no-store' });
+                if (!res.ok) return;
+                const data = await res.json();
+                ggufFilesCache = data.files || [];
+                ggufTemplatesCache = data.templates || [];
+                renderGgufFilesList();
+                if (data.hfDownload && data.hfDownload.status !== 'idle') {
+                    renderHfDownloadState(data.hfDownload);
+                    if (data.hfDownload.active) startHfPolling();
+                }
+            } catch (e) {
+                logMessage('WARN', `Ошибка сканирования GGUF: ${e.message}`);
+            }
+        }
+
+        function uploadGgufFile(file) {
+            if (!file) return;
+            if (!file.name.toLowerCase().endsWith('.gguf')) {
+                showToast('Пожалуйста, выберите файл с расширением .gguf');
+                return;
+            }
+            if (ggufUploadProgressBox) {
+                ggufUploadProgressBox.style.display = 'flex';
+                ggufUploadProgressBar.style.width = '0%';
+                ggufUploadPercentText.innerText = '0%';
+                ggufUploadStatusText.innerText = `Копирование ${file.name} (${formatBytesHuman(file.size)}) в models/...`;
+            }
+
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', `/api/models/gguf/upload?filename=${encodeURIComponent(file.name)}`);
+            xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+
+            xhr.upload.addEventListener('progress', (e) => {
+                if (e.lengthComputable && ggufUploadProgressBox) {
+                    const pct = Math.round((e.loaded / e.total) * 100);
+                    ggufUploadProgressBar.style.width = pct + '%';
+                    ggufUploadPercentText.innerText = pct + '%';
+                    ggufUploadStatusText.innerText = `Сохранение ${file.name}: ${formatBytesHuman(e.loaded)} / ${formatBytesHuman(e.total)}`;
+                }
+            });
+
+            xhr.addEventListener('load', async () => {
+                try {
+                    const resp = JSON.parse(xhr.responseText || '{}');
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        if (ggufUploadProgressBox) {
+                            ggufUploadProgressBar.style.width = '100%';
+                            ggufUploadPercentText.innerText = '100%';
+                            ggufUploadStatusText.innerText = `✅ ${resp.filename} сохранён (шаблон: ${resp.detectedTemplate})`;
+                        }
+                        showToast(`📦 ${resp.filename} добавлен в models/`);
+                        await loadGgufModels();
+                    } else {
+                        throw new Error(resp.error || 'HTTP ' + xhr.status);
+                    }
+                } catch (err) {
+                    if (ggufUploadStatusText) ggufUploadStatusText.innerText = '❌ Ошибка: ' + err.message;
+                    showToast('Ошибка загрузки GGUF: ' + err.message);
+                }
+            });
+
+            xhr.addEventListener('error', () => {
+                if (ggufUploadStatusText) ggufUploadStatusText.innerText = '❌ Сетевой сбой при передаче файла';
+                showToast('Ошибка передачи .gguf файла');
+            });
+
+            xhr.send(file);
+        }
+
+        async function refreshGgufModelfilePreview(idx, forceShow = false) {
+            const fileObj = ggufFilesCache[idx];
+            if (!fileObj) return;
+            const tmplEl = document.getElementById(`ggufTmpl_${idx}`);
+            const ctxEl = document.getElementById(`ggufCtx_${idx}`);
+            const preEl = document.getElementById(`ggufPre_${idx}`);
+            if (!preEl) return;
+            if (!forceShow && preEl.style.display === 'none') return;
+
+            try {
+                const res = await fetch('/api/models/gguf/modelfile-preview', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        filename: fileObj.filename,
+                        templateFamily: tmplEl ? tmplEl.value : fileObj.detectedTemplate,
+                        numCtx: ctxEl ? parseInt(ctxEl.value, 10) : (fileObj.recommendedNumCtx || 32768)
+                    })
+                });
+                const data = await res.json();
+                if (res.ok && data.modelfile) {
+                    preEl.textContent = data.modelfile;
+                    if (forceShow) preEl.style.display = 'block';
+                }
+            } catch (_) {}
+        }
+
+        async function importGgufToOllama(idx, triggerBtn) {
+            const fileObj = ggufFilesCache[idx];
+            if (!fileObj) return;
+            const nameEl = document.getElementById(`ggufName_${idx}`);
+            const tmplEl = document.getElementById(`ggufTmpl_${idx}`);
+            const ctxEl = document.getElementById(`ggufCtx_${idx}`);
+            const statusEl = document.getElementById(`ggufStatus_${idx}`);
+
+            const modelName = (nameEl ? nameEl.value.trim() : '') || fileObj.suggestedOllamaName;
+            if (triggerBtn) triggerBtn.disabled = true;
+            if (statusEl) {
+                statusEl.style.display = 'block';
+                statusEl.style.color = '#93c5fd';
+                statusEl.innerText = `⏳ Генерация Modelfile и импорт "${modelName}" в Ollama...`;
+            }
+
+            try {
+                const res = await fetch('/api/models/gguf/import', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        filename: fileObj.filename,
+                        modelName,
+                        templateFamily: tmplEl ? tmplEl.value : fileObj.detectedTemplate,
+                        numCtx: ctxEl ? parseInt(ctxEl.value, 10) : (fileObj.recommendedNumCtx || 32768)
+                    })
+                });
+                if (!res.ok) {
+                    const errJson = await res.json().catch(() => ({}));
+                    throw new Error(errJson.error || 'HTTP ' + res.status);
+                }
+
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder();
+                let buf = '';
+                let finalModelName = modelName;
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    buf += decoder.decode(value, { stream: true });
+                    const lines = buf.split('\n');
+                    buf = lines.pop() || '';
+                    for (const line of lines) {
+                        if (!line.trim()) continue;
+                        const ev = JSON.parse(line);
+                        if (ev.error) throw new Error(ev.error);
+                        if (ev.status && statusEl) {
+                            statusEl.innerText = ev.percent ? `${ev.status} (${ev.percent}%)` : ev.status;
+                        }
+                        if (ev.modelName) finalModelName = ev.modelName;
+                    }
+                }
+
+                if (statusEl) {
+                    statusEl.style.color = '#4ade80';
+                    statusEl.innerText = `✅ Импортировано как "${finalModelName}"!`;
+                }
+                showToast(`🚀 Модель "${finalModelName}" готова к работе!`);
+                await loadInstalledModels();
+                await loadGgufModels();
+                applyModelSelection(finalModelName);
+            } catch (err) {
+                if (statusEl) {
+                    statusEl.style.display = 'block';
+                    statusEl.style.color = '#f85149';
+                    statusEl.innerText = `❌ ${err.message}`;
+                }
+                showToast('Ошибка импорта GGUF: ' + err.message);
+            } finally {
+                if (triggerBtn) triggerBtn.disabled = false;
+            }
+        }
+
+        async function inspectHfSource() {
+            const rawInput = (hfUrlInput ? hfUrlInput.value.trim() : '');
+            if (!rawInput) {
+                showToast('Введите репозиторий Hugging Face или прямую ссылку на .gguf');
+                return;
+            }
+            if (hfInspectBtn) hfInspectBtn.disabled = true;
+            if (hfInspectResult) hfInspectResult.innerHTML = '<div style="font-size:0.8rem; color:#93c5fd;">🔍 Проверка Hugging Face...</div>';
+
+            try {
+                const headers = {};
+                const tok = hfTokenInput ? hfTokenInput.value.trim() : '';
+                if (tok) headers['X-HF-Token'] = tok;
+
+                const res = await fetch(`/api/models/hf/inspect?input=${encodeURIComponent(rawInput)}`, { headers });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+
+                hfFilesCache = data.kind === 'file' ? [data.file] : (data.files || []);
+                if (!hfInspectResult) return;
+
+                hfInspectResult.innerHTML = '';
+                hfFilesCache.forEach((f, idx) => {
+                    const row = document.createElement('div');
+                    row.className = 'hf-file-row';
+                    const sizeBadge = f.sizeBytes > 0 ? formatBytesHuman(f.sizeBytes) : (f.statusNote || 'Размер ?');
+                    const compatHtml = f.compatibility
+                        ? `<span class="gguf-pill" style="border-color:${escapeHtml(f.compatibility.color)}; color:${escapeHtml(f.compatibility.color)};">${escapeHtml(f.compatibility.badge)}</span>`
+                        : '';
+                    row.innerHTML = `
+                        <div style="flex:1; min-width:180px;">
+                            <div style="font-weight:600; color:#e6edf3; word-break:break-word;">${escapeHtml(f.filename)}</div>
+                            <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:3px; align-items:center;">
+                                <span class="gguf-pill">${escapeHtml(sizeBadge)}</span>
+                                ${compatHtml}
+                                <span class="gguf-pill">${escapeHtml(f.detectedTemplate)}</span>
+                            </div>
+                        </div>
+                        <button type="button" class="btn-download" data-hfidx="${idx}" style="background:#238636; padding:5px 10px; font-size:0.78rem;">⬇️ Скачать</button>
+                    `;
+                    hfInspectResult.appendChild(row);
+                });
+            } catch (err) {
+                if (hfInspectResult) {
+                    hfInspectResult.innerHTML = `<div style="font-size:0.8rem; color:#f85149;">❌ ${escapeHtml(err.message)}</div>`;
+                }
+            } finally {
+                if (hfInspectBtn) hfInspectBtn.disabled = false;
+            }
+        }
+
+        if (ggufDropzone && ggufFileInput) {
+            ggufDropzone.addEventListener('click', () => ggufFileInput.click());
+            ggufDropzone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                ggufDropzone.classList.add('dragover');
+            });
+            ggufDropzone.addEventListener('dragleave', () => ggufDropzone.classList.remove('dragover'));
+            ggufDropzone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                ggufDropzone.classList.remove('dragover');
+                if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                    uploadGgufFile(e.dataTransfer.files[0]);
+                }
+            });
+            ggufFileInput.addEventListener('change', () => {
+                if (ggufFileInput.files && ggufFileInput.files.length > 0) {
+                    uploadGgufFile(ggufFileInput.files[0]);
+                    ggufFileInput.value = '';
+                }
+            });
+        }
+
+        if (refreshGgufBtn) refreshGgufBtn.addEventListener('click', loadGgufModels);
+        if (hfInspectBtn) hfInspectBtn.addEventListener('click', inspectHfSource);
+        if (hfUrlInput) {
+            hfUrlInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    inspectHfSource();
+                }
+            });
+        }
+        if (hfTokenToggleBtn && hfTokenInput) {
+            hfTokenToggleBtn.addEventListener('click', () => {
+                hfTokenInput.style.display = hfTokenInput.style.display === 'none' ? 'block' : 'none';
+            });
+        }
+        if (hfInspectResult) {
+            hfInspectResult.addEventListener('click', async (e) => {
+                const btn = e.target.closest('button[data-hfidx]');
+                if (!btn) return;
+                const item = hfFilesCache[parseInt(btn.getAttribute('data-hfidx'), 10)];
+                if (!item) return;
+                try {
+                    const tok = hfTokenInput ? hfTokenInput.value.trim() : '';
+                    const res = await fetch('/api/models/hf/download', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ url: item.url, filename: item.filename, hfToken: tok })
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+                    renderHfDownloadState(data.job);
+                    startHfPolling();
+                } catch (err) {
+                    showToast('Ошибка запуска скачивания HF: ' + err.message);
+                }
+            });
+        }
+        if (hfCancelDownloadBtn) {
+            hfCancelDownloadBtn.addEventListener('click', async () => {
+                try {
+                    const res = await fetch('/api/models/hf/cancel', { method: 'POST' });
+                    const data = await res.json();
+                    renderHfDownloadState(data.job);
+                } catch (_) {}
+            });
+        }
+        if (ggufFilesList) {
+            ggufFilesList.addEventListener('change', (e) => {
+                const el = e.target.closest('[data-idx]');
+                if (!el) return;
+                const act = el.getAttribute('data-act');
+                if (act === 'tmpl-change' || act === 'ctx-change') {
+                    refreshGgufModelfilePreview(parseInt(el.getAttribute('data-idx'), 10), false);
+                }
+            });
+            ggufFilesList.addEventListener('click', async (e) => {
+                const btn = e.target.closest('button[data-act]');
+                if (!btn) return;
+                const act = btn.getAttribute('data-act');
+                const idx = parseInt(btn.getAttribute('data-idx'), 10);
+                const fileObj = ggufFilesCache[idx];
+                if (!fileObj) return;
+
+                if (act === 'preview') {
+                    const preEl = document.getElementById(`ggufPre_${idx}`);
+                    if (!preEl) return;
+                    if (preEl.style.display === 'none') {
+                        await refreshGgufModelfilePreview(idx, true);
+                    } else {
+                        preEl.style.display = 'none';
+                    }
+                } else if (act === 'import') {
+                    await importGgufToOllama(idx, btn);
+                } else if (act === 'delete') {
+                    if (!confirm(`Удалить локальный файл models/${fileObj.filename}?`)) return;
+                    try {
+                        const res = await fetch(`/api/models/gguf/${encodeURIComponent(fileObj.filename)}`, { method: 'DELETE' });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+                        showToast(`🗑️ Файл ${fileObj.filename} удалён`);
+                        await loadGgufModels();
+                    } catch (err) {
+                        showToast('Ошибка удаления GGUF: ' + err.message);
+                    }
+                }
+            });
+        }
+
         // Запуск при старте
         window.addEventListener('DOMContentLoaded', () => {
             loadHardwareSpecs();
             loadInstalledModels();
+            loadGgufModels();
             updateRagButtonUI();
             updateWebButtonUI();
             updateDeepResearchButtonUI();

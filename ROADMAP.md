@@ -111,13 +111,13 @@ An autonomous local workspace for open-weights AI models built on pure Node.js (
 
 ---
 
-### Stage 3: GGUF & Hugging Face Model Importer 📦
-* [ ] **`models/` Directory Support for `.gguf` Files**:
-  * Drag-and-drop workflow for quantized `.gguf` files (downloaded from Hugging Face) placed in the local project folder.
-* [ ] **Automatic `Modelfile` Generator**:
-  * Backend detects the prompt template family (ChatML, Llama-3, Mistral), builds a `Modelfile`, and runs `ollama create <name> -f Modelfile` automatically without manual CLI steps.
-* [ ] **Direct URL Downloader**:
-  * Input field to pull quantized weights directly from Hugging Face repositories.
+### Stage 3: GGUF & Hugging Face Model Importer 📦 ✅ (Completed)
+* [x] **`models/` Directory Support for `.gguf` Files**:
+  * Added local `models/` directory scanning (`GET /api/models/gguf`), streaming multi-GB `.gguf` drag-and-drop uploads (`POST /api/models/gguf/upload` with `GGUF` magic-header validation and zero full-file RAM buffering via `XMLHttpRequest` progress), hardware compatibility evaluation, and safe deletion (`DELETE /api/models/gguf/:filename`).
+* [x] **Automatic `Modelfile` Generator & Ollama Importer**:
+  * Implemented lightweight binary GGUF v2/v3 metadata header reader (`readGgufMetadata`), automatic prompt template detection (`detectTemplateFamily`: `chatml`, `llama3`, `mistral`, `gemma2`, `deepseek`, `auto`), interactive `Modelfile` preview (`POST /api/models/gguf/modelfile-preview`), and streaming `ollama create <name> -f <Modelfile>` execution (`POST /api/models/gguf/import`).
+* [x] **Direct URL Downloader (Hugging Face)**:
+  * Added Hugging Face repo/URL inspector (`GET /api/models/hf/inspect` with `/blob/` -> `/resolve/` rewrite, recursive quantization discovery, and private/loopback SSRF blocking) plus background streaming `.gguf` downloader with live progress/speed tracking and cancellation (`POST /api/models/hf/download`, `GET /api/models/hf/status`, `POST /api/models/hf/cancel`).
 
 ---
 

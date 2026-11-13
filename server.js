@@ -10,15 +10,26 @@ const PORT = 3000;
 const OLLAMA_PORT = 11434;
 const LOG_FILE = path.join(__dirname, 'app.log');
 const KNOWLEDGE_DIR = path.join(__dirname, 'knowledge');
+const MODELS_DIR = path.join(__dirname, 'models');
 const INDEX_FILE = path.join(__dirname, 'knowledge_index.json');
 
-// Обеспечиваем наличие папки для документов базы знаний
-if (!fs.existsSync(KNOWLEDGE_DIR)) {
-    try {
-        fs.mkdirSync(KNOWLEDGE_DIR, { recursive: true });
-    } catch (e) {
-        console.error('Ошибка создания папки knowledge:', e);
+function ensureDirExists(dirPath, label) {
+    if (!fs.existsSync(dirPath)) {
+        try {
+            fs.mkdirSync(dirPath, { recursive: true });
+        } catch (e) {
+            console.error(`Ошибка создания папки ${label}:`, e);
+        }
     }
+}
+
+// Обеспечиваем наличие папок для документов базы знаний и локальных GGUF-моделей
+ensureDirExists(KNOWLEDGE_DIR, 'knowledge');
+ensureDirExists(MODELS_DIR, 'models');
+
+function getOllamaExecutablePath() {
+    const winDefault = path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Ollama', 'ollama.exe');
+    return (process.platform === 'win32' && fs.existsSync(winDefault)) ? winDefault : 'ollama';
 }
 
 // Функция записи в лог-файл и консоль с локальным временем (не UTC!)
@@ -41,9 +52,9 @@ function writeLog(level, message) {
 
 // Автоматический запуск Ollama, если она не запущена
 function ensureOllamaRunning() {
-    const ollamaPath = path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Ollama', 'ollama.exe');
-    
-    const checkReq = http.get({ hostname: '127.0.0.1', port: OLLAMA_PORT, path: '/api/tags' }, (res) => {
+    const ollamaPath = getOllamaExecutablePath();
+
+    const checkReq = http.get({ hostname: '127.0.0.1', port: OLLAMA_PORT, path: '/api/tags' }, () => {
         writeLog('INFO', 'Служба Ollama активна и отвечает.');
     });
 
@@ -2295,6 +2306,880 @@ function extractLocalPathFromQuery(query) {
     return fs.existsSync(candidate) ? candidate : m[0].trim();
 }
 
+// ==========================================
+// Stage 3: GGUF & Hugging Face Model Importer
+// ==========================================
+
+const GGUF_TEMPLATES = {
+    chatml: {
+        id: 'chatml',
+        label: 'ChatML (<|im_start|> / Qwen / Dolphin)',
+        defaultNumCtx: 32768,
+        template: `{{- if .Messages }}
+{{- if .System }}<|im_start|>system
+{{ .System }}<|im_end|>
+{{ end }}
+{{- range .Messages }}
+{{- if ne .Role "system" }}<|im_start|>{{ .Role }}
+{{ .Content }}<|im_end|>
+{{ end }}
+{{- end }}<|im_start|>assistant
+{{ else }}
+{{- if .System }}<|im_start|>system
+{{ .System }}<|im_end|>
+{{ end }}<|im_start|>user
+{{ .Prompt }}<|im_end|>
+<|im_start|>assistant
+{{ end }}`,
+        stopTokens: ['<|im_start|>', '<|im_end|>']
+    },
+    llama3: {
+        id: 'llama3',
+        label: 'Llama 3 / 3.1 / 3.2 (<|start_header_id|>)',
+        defaultNumCtx: 32768,
+        template: `{{- if .Messages }}
+{{- if .System }}<|start_header_id|>system<|end_header_id|>
+
+{{ .System }}<|eot_id|>{{ end }}
+{{- range .Messages }}
+{{- if ne .Role "system" }}<|start_header_id|>{{ .Role }}<|end_header_id|>
+
+{{ .Content }}<|eot_id|>{{ end }}
+{{- end }}<|start_header_id|>assistant<|end_header_id|>
+
+{{ else }}
+{{- if .System }}<|start_header_id|>system<|end_header_id|>
+
+{{ .System }}<|eot_id|>{{ end }}<|start_header_id|>user<|end_header_id|>
+
+{{ .Prompt }}<|eot_id|><|start_header_id|>assistant<|end_header_id|>
+
+{{ end }}`,
+        stopTokens: ['<|start_header_id|>', '<|end_header_id|>', '<|eot_id|>']
+    },
+    mistral: {
+        id: 'mistral',
+        label: 'Mistral / Mixtral ([INST])',
+        defaultNumCtx: 32768,
+        template: `{{- if .Messages }}
+{{- if .System }}<s>[INST] {{ .System }} [/INST]{{ end }}
+{{- range .Messages }}
+{{- if eq .Role "user" }}<s>[INST] {{ .Content }} [/INST]
+{{- else if eq .Role "assistant" }} {{ .Content }}</s>{{ end }}
+{{- end }}
+{{ else }}<s>[INST] {{ if .System }}{{ .System }}
+
+{{ end }}{{ .Prompt }} [/INST]{{ end }}`,
+        stopTokens: ['[INST]', '[/INST]', '</s>']
+    },
+    gemma2: {
+        id: 'gemma2',
+        label: 'Google Gemma 2 (<start_of_turn>)',
+        defaultNumCtx: 8192,
+        template: `{{- if .Messages }}
+{{- if .System }}<start_of_turn>system
+{{ .System }}<end_of_turn>
+{{ end }}
+{{- range .Messages }}
+{{- if eq .Role "user" }}<start_of_turn>user
+{{ .Content }}<end_of_turn>
+{{ else if eq .Role "assistant" }}<start_of_turn>model
+{{ .Content }}<end_of_turn>
+{{ end }}
+{{- end }}<start_of_turn>model
+{{ else }}
+{{- if .System }}<start_of_turn>user
+{{ .System }}
+
+{{ .Prompt }}<end_of_turn>
+{{ else }}<start_of_turn>user
+{{ .Prompt }}<end_of_turn>
+{{ end }}<start_of_turn>model
+{{ end }}`,
+        stopTokens: ['<start_of_turn>', '<end_of_turn>']
+    },
+    deepseek: {
+        id: 'deepseek',
+        label: 'DeepSeek R1 / V2 / Coder',
+        defaultNumCtx: 32768,
+        template: `{{- if .Messages }}
+{{- if .System }}{{ .System }}
+{{ end }}
+{{- range .Messages }}
+{{- if eq .Role "user" }}<｜User｜>{{ .Content }}<｜Assistant｜>
+{{- else if eq .Role "assistant" }}{{ .Content }}<｜end▁of▁sentence｜>{{ end }}
+{{- end }}
+{{ else }}{{ if .System }}{{ .System }}
+{{ end }}<｜User｜>{{ .Prompt }}<｜Assistant｜>{{ end }}`,
+        stopTokens: ['<｜User｜>', '<｜Assistant｜>', '<｜end▁of▁sentence｜>']
+    },
+    auto: {
+        id: 'auto',
+        label: 'Авто (встроенный шаблон из GGUF)',
+        defaultNumCtx: 32768,
+        template: null,
+        stopTokens: []
+    }
+};
+
+function sanitizeGgufFilename(rawName) {
+    const base = path.basename(String(rawName || '').trim());
+    if (!base || base === '.' || base === '..') return null;
+    const cleaned = base.replace(/[^a-zA-Z0-9._-]/g, '_');
+    if (!cleaned.toLowerCase().endsWith('.gguf')) return null;
+    if (cleaned.startsWith('.')) return null;
+    return cleaned;
+}
+
+function resolveSafeModelFilePath(rawFilename) {
+    const safeName = sanitizeGgufFilename(rawFilename);
+    if (!safeName) return null;
+    const rootResolved = path.resolve(MODELS_DIR);
+    const fullPath = path.resolve(rootResolved, safeName);
+    if (!fullPath.startsWith(rootResolved + path.sep)) return null;
+    return { filename: safeName, fullPath };
+}
+
+function sanitizeOllamaModelName(rawName, fallbackFilename = '') {
+    let val = String(rawName || '').trim().toLowerCase();
+    if (!val && fallbackFilename) {
+        return suggestOllamaModelName(fallbackFilename);
+    }
+    val = val.replace(/\s+/g, '-').replace(/[^a-z0-9._:/-]/g, '');
+    // Preserve optional single :tag suffix
+    const colonIdx = val.indexOf(':');
+    let base = colonIdx >= 0 ? val.slice(0, colonIdx) : val;
+    let tag = colonIdx >= 0 ? val.slice(colonIdx + 1).replace(/:/g, '-') : 'latest';
+    base = base.replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, '').slice(0, 64) || 'custom-gguf';
+    tag = tag.replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, '').slice(0, 32) || 'latest';
+    return `${base}:${tag}`;
+}
+
+function suggestOllamaModelName(filename) {
+    let stem = path.basename(String(filename || 'model.gguf')).replace(/\.gguf$/i, '');
+    let quant = 'latest';
+    const qMatch = stem.match(/[-_.]((?:IQ|Q|FP|BF|F)\d+(?:_[A-Z0-9_]+)?)$/i);
+    if (qMatch) {
+        quant = qMatch[1].toLowerCase().replace(/[^a-z0-9._-]/g, '-');
+        stem = stem.slice(0, qMatch.index);
+    }
+    const cleanBase = stem
+        .toLowerCase()
+        .replace(/[^a-z0-9._-]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 64) || 'custom-gguf';
+    return `${cleanBase}:${quant}`;
+}
+
+/**
+ * Lightweight streaming GGUF v2/v3 metadata header reader (never loads tensor weights into RAM).
+ */
+function readGgufMetadata(filePath) {
+    const result = {
+        validMagic: false,
+        version: null,
+        architecture: '',
+        modelName: '',
+        chatTemplate: '',
+        contextLength: null,
+        fileType: null
+    };
+    const FIXED_SIZE_MAP = { 0: 1, 1: 1, 2: 2, 3: 2, 4: 4, 5: 4, 6: 4, 7: 1, 10: 8, 11: 8, 12: 8 };
+    const MAX_SCAN_OFFSET = 16 * 1024 * 1024;
+    let fd = null;
+
+    try {
+        const stat = fs.statSync(filePath);
+        if (stat.size < 16) return result;
+        fd = fs.openSync(filePath, 'r');
+
+        const CHUNK_SIZE = 65536;
+        const buf = Buffer.allocUnsafe(CHUNK_SIZE);
+        let bufStart = 0;
+        let bufLen = 0;
+        let pos = 0;
+
+        const ensure = (needBytes) => {
+            if (pos + needBytes > stat.size || pos + needBytes > MAX_SCAN_OFFSET) return false;
+            if (pos >= bufStart && pos + needBytes <= bufStart + bufLen) return true;
+            if (needBytes > CHUNK_SIZE) return false;
+            bufStart = pos;
+            bufLen = fs.readSync(fd, buf, 0, Math.min(CHUNK_SIZE, stat.size - pos), pos);
+            return bufLen >= needBytes;
+        };
+
+        const readU32 = () => {
+            if (!ensure(4)) throw new Error('EOF');
+            const v = buf.readUInt32LE(pos - bufStart);
+            pos += 4;
+            return v;
+        };
+
+        const readU64Num = () => {
+            if (!ensure(8)) throw new Error('EOF');
+            const big = buf.readBigUInt64LE(pos - bufStart);
+            pos += 8;
+            return Number(big);
+        };
+
+        const readMagic = () => {
+            if (!ensure(4)) return '';
+            const m = buf.toString('ascii', pos - bufStart, pos - bufStart + 4);
+            pos += 4;
+            return m;
+        };
+
+        const readStr = (maxKeepLen = 8192) => {
+            const len = readU64Num();
+            if (len < 0 || pos + len > stat.size) throw new Error('BAD_LEN');
+            if (len === 0) return '';
+            if (len <= maxKeepLen && len <= CHUNK_SIZE && ensure(len)) {
+                const s = buf.toString('utf8', pos - bufStart, pos - bufStart + len);
+                pos += len;
+                return s;
+            }
+            const previewLen = Math.min(len, maxKeepLen);
+            let out = '';
+            if (previewLen > 0 && ensure(previewLen)) {
+                out = buf.toString('utf8', pos - bufStart, pos - bufStart + previewLen);
+            }
+            pos += len;
+            return out;
+        };
+
+        const readScalarNumber = (vtype) => {
+            const sz = FIXED_SIZE_MAP[vtype];
+            if (!sz || !ensure(sz)) throw new Error('EOF');
+            const off = pos - bufStart;
+            let val = null;
+            if (vtype === 0) val = buf.readUInt8(off);
+            else if (vtype === 1) val = buf.readInt8(off);
+            else if (vtype === 2) val = buf.readUInt16LE(off);
+            else if (vtype === 3) val = buf.readInt16LE(off);
+            else if (vtype === 4) val = buf.readUInt32LE(off);
+            else if (vtype === 5) val = buf.readInt32LE(off);
+            else if (vtype === 7) val = buf.readUInt8(off) !== 0;
+            else if (vtype === 10) val = Number(buf.readBigUInt64LE(off));
+            else if (vtype === 11) val = Number(buf.readBigInt64LE(off));
+            pos += sz;
+            return val;
+        };
+
+        const skipValue = (vtype, depth = 0) => {
+            if (depth > 4) throw new Error('DEPTH');
+            if (FIXED_SIZE_MAP[vtype]) {
+                pos += FIXED_SIZE_MAP[vtype];
+                return;
+            }
+            if (vtype === 8) {
+                const len = readU64Num();
+                pos += len;
+                return;
+            }
+            if (vtype === 9) {
+                const elemType = readU32();
+                const count = readU64Num();
+                if (FIXED_SIZE_MAP[elemType]) {
+                    pos += count * FIXED_SIZE_MAP[elemType];
+                    return;
+                }
+                const maxItems = Math.min(count, 262144);
+                for (let i = 0; i < maxItems; i++) {
+                    skipValue(elemType, depth + 1);
+                    if (pos > MAX_SCAN_OFFSET || pos >= stat.size) return;
+                }
+                return;
+            }
+            throw new Error('UNKNOWN_TYPE');
+        };
+
+        const magic = readMagic();
+        if (magic !== 'GGUF') return result;
+        result.validMagic = true;
+
+        const version = readU32();
+        result.version = version;
+        if (version < 2 || version > 3) return result;
+
+        readU64Num(); // tensor_count
+        const kvCount = Math.min(readU64Num(), 1024);
+
+        for (let i = 0; i < kvCount; i++) {
+            if (pos >= MAX_SCAN_OFFSET || pos >= stat.size) break;
+            const key = readStr(256);
+            const vtype = readU32();
+
+            if (key === 'general.architecture' && vtype === 8) {
+                result.architecture = readStr(128).trim();
+            } else if (key === 'general.name' && vtype === 8) {
+                result.modelName = readStr(256).trim();
+            } else if (key === 'tokenizer.chat_template' && vtype === 8) {
+                result.chatTemplate = readStr(8192);
+            } else if (key === 'general.file_type' && FIXED_SIZE_MAP[vtype]) {
+                result.fileType = readScalarNumber(vtype);
+            } else if (key.endsWith('.context_length') && FIXED_SIZE_MAP[vtype]) {
+                result.contextLength = readScalarNumber(vtype);
+            } else {
+                skipValue(vtype, 0);
+            }
+
+            if (result.architecture && result.modelName && result.chatTemplate && result.contextLength) {
+                break;
+            }
+        }
+    } catch (_) {
+        // Ignore truncated/non-standard tails and return collected header metadata
+    } finally {
+        if (fd !== null) {
+            try { fs.closeSync(fd); } catch (_) {}
+        }
+    }
+    return result;
+}
+
+function detectTemplateFamily(filename, ggufMeta = null) {
+    const tmpl = (ggufMeta && ggufMeta.chatTemplate ? ggufMeta.chatTemplate : '');
+    const arch = (ggufMeta && ggufMeta.architecture ? ggufMeta.architecture : '').toLowerCase();
+    const fname = String(filename || '').toLowerCase();
+
+    // 1. Authoritative check from embedded GGUF tokenizer.chat_template
+    if (tmpl.includes('<|start_header_id|>') || tmpl.includes('<|eot_id|>')) return 'llama3';
+    if (tmpl.includes('<|im_start|>') || tmpl.includes('<|im_end|>')) return 'chatml';
+    if (tmpl.includes('[INST]')) return 'mistral';
+    if (tmpl.includes('<start_of_turn>')) return 'gemma2';
+    if (tmpl.includes('<｜User｜>') || tmpl.includes('<|User|>') || tmpl.includes('<｜Assistant｜>')) return 'deepseek';
+
+    // 2. Fallback to GGUF architecture + filename hints
+    if (fname.includes('dolphin-mistral') || (fname.includes('dolphin') && fname.includes('2.9'))) return 'chatml';
+    if (fname.includes('dolphin-llama3') || fname.includes('dolphin3') || fname.includes('llama-3') || fname.includes('llama3')) return 'llama3';
+    if (arch.includes('qwen') || fname.includes('qwen') || fname.includes('dolphin') || fname.includes('hermes') || fname.includes('smollm') || fname.includes('yi')) return 'chatml';
+    if (arch.includes('gemma') || fname.includes('gemma')) return 'gemma2';
+    if (arch.includes('deepseek') || fname.includes('deepseek')) return 'deepseek';
+    if (fname.includes('mistral') || fname.includes('mixtral') || fname.includes('codestral')) return 'mistral';
+    if (arch === 'llama') return 'llama3';
+    return 'chatml';
+}
+
+function buildModelfileContent({
+    ggufFilename = '',
+    ggufAbsPath = '',
+    templateFamily = 'chatml',
+    numCtx = 32768,
+    temperature = 0.7,
+    systemPrompt = '',
+    useRelativePath = true
+}) {
+    const familyKey = GGUF_TEMPLATES[templateFamily] ? templateFamily : 'chatml';
+    const spec = GGUF_TEMPLATES[familyKey];
+    const fromTarget = useRelativePath && ggufFilename
+        ? `./${path.basename(ggufFilename)}`
+        : (ggufAbsPath || ggufFilename || './model.gguf').replace(/\\/g, '/');
+
+    const safeCtx = Math.max(2048, Math.min(131072, parseInt(numCtx, 10) || spec.defaultNumCtx || 32768));
+    const parsedTemp = Number.isFinite(Number(temperature)) ? Math.max(0, Math.min(2, Number(temperature))) : 0.7;
+
+    const lines = [
+        `# Auto-generated by Qwen AI Studio (${spec.label})`,
+        `FROM "${fromTarget}"`,
+        ''
+    ];
+
+    if (spec.template) {
+        lines.push(`TEMPLATE """${spec.template}"""`);
+        lines.push('');
+    }
+    for (const stopTok of (spec.stopTokens || [])) {
+        lines.push(`PARAMETER stop "${stopTok}"`);
+    }
+    lines.push(`PARAMETER num_ctx ${safeCtx}`);
+    lines.push(`PARAMETER temperature ${parsedTemp}`);
+
+    const cleanSys = String(systemPrompt || '').replace(/"""/g, "'''").trim();
+    if (cleanSys) {
+        lines.push('');
+        lines.push(`SYSTEM """${cleanSys}"""`);
+    }
+    return lines.join('\n') + '\n';
+}
+
+function isPrivateOrLocalHostname(hostname) {
+    const h = String(hostname || '').toLowerCase().replace(/^\[|\]$/g, '');
+    if (!h || h === 'localhost' || h.endsWith('.local') || h.endsWith('.internal')) return true;
+    if (h === '::1' || h.startsWith('fe80:') || h.startsWith('fc') || h.startsWith('fd')) return true;
+    const ipv4 = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+    if (!ipv4) return !h.includes('.');
+    const [a, b] = [Number(ipv4[1]), Number(ipv4[2])];
+    if (a === 127 || a === 10 || a === 0) return true;
+    if (a === 169 && b === 254) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    return false;
+}
+
+function validateExternalModelUrl(rawUrl) {
+    let parsed;
+    try {
+        parsed = new URL(String(rawUrl || '').trim());
+    } catch (_) {
+        throw new Error('Некорректный URL');
+    }
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+        throw new Error('Разрешены только HTTP/HTTPS ссылки');
+    }
+    if (isPrivateOrLocalHostname(parsed.hostname)) {
+        throw new Error('Локальные и внутренние адреса запрещены');
+    }
+    return parsed;
+}
+
+function parseHuggingFaceInput(rawInput) {
+    const trimmed = String(rawInput || '').trim();
+    if (!trimmed) throw new Error('Введите ссылку или имя репозитория Hugging Face');
+
+    // Direct owner/repo shorthand (e.g. "Qwen/Qwen2.5-0.5B-Instruct-GGUF")
+    const slugMatch = trimmed.match(/^([a-zA-Z0-9._-]+)\/([a-zA-Z0-9._-]+)$/);
+    if (slugMatch) {
+        return { kind: 'repo', owner: slugMatch[1], repo: slugMatch[2], branch: 'main' };
+    }
+
+    const parsed = validateExternalModelUrl(trimmed);
+    const host = parsed.hostname.toLowerCase();
+    const isHfHost = host === 'huggingface.co' || host.endsWith('.huggingface.co') || host === 'hf.co';
+
+    // Convert HF /blob/branch/file.gguf -> /resolve/branch/file.gguf automatically
+    if (isHfHost && parsed.pathname.includes('/blob/')) {
+        parsed.pathname = parsed.pathname.replace('/blob/', '/resolve/');
+    }
+
+    const lowerPath = parsed.pathname.toLowerCase();
+    if (lowerPath.endsWith('.gguf')) {
+        const filename = sanitizeGgufFilename(decodeURIComponent(path.basename(parsed.pathname))) || 'model.gguf';
+        return { kind: 'file', url: parsed.toString(), filename };
+    }
+
+    if (isHfHost) {
+        const parts = parsed.pathname.split('/').filter(Boolean);
+        if (parts.length >= 2) {
+            const owner = parts[0];
+            const repo = parts[1];
+            const branch = (parts[2] === 'tree' && parts[3]) ? parts[3] : 'main';
+            return { kind: 'repo', owner, repo, branch };
+        }
+    }
+
+    throw new Error('Укажите прямую ссылку на .gguf или репозиторий Hugging Face (owner/repo)');
+}
+
+function requestWithRedirects(targetUrl, { method = 'GET', hfToken = '', redirectCount = 0 } = {}) {
+    return new Promise((resolve, reject) => {
+        if (redirectCount > 10) {
+            reject(new Error('Слишком много перенаправлений HTTP'));
+            return;
+        }
+        let parsed;
+        try {
+            parsed = validateExternalModelUrl(targetUrl);
+        } catch (err) {
+            reject(err);
+            return;
+        }
+
+        const lib = parsed.protocol === 'https:' ? https : http;
+        const headers = { 'User-Agent': 'QwenAIStudio/1.0' };
+        const host = parsed.hostname.toLowerCase();
+        // Send optional HF token strictly to Hugging Face domains, never to external CDN redirects
+        if (hfToken && (host === 'huggingface.co' || host.endsWith('.huggingface.co') || host === 'hf.co')) {
+            headers['Authorization'] = `Bearer ${hfToken.trim()}`;
+        }
+
+        const req = lib.request(parsed.toString(), { method, headers, timeout: 25000 }, (res) => {
+            if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+                res.resume();
+                const nextUrl = new URL(res.headers.location, parsed.toString()).toString();
+                requestWithRedirects(nextUrl, { method, hfToken, redirectCount: redirectCount + 1 })
+                    .then(resolve)
+                    .catch(reject);
+                return;
+            }
+            resolve({ res, finalUrl: parsed.toString(), req });
+        });
+
+        req.on('timeout', () => {
+            req.destroy(new Error('Таймаут соединения при обращении к серверу'));
+        });
+        req.on('error', reject);
+        req.end();
+    });
+}
+
+async function inspectHuggingFaceInput(rawInput, hfToken = '') {
+    const parsedInput = parseHuggingFaceInput(rawInput);
+    const hwSpecs = await getSystemHardwareSpecs();
+
+    if (parsedInput.kind === 'file') {
+        let sizeBytes = 0;
+        let statusNote = 'Готов к загрузке';
+        try {
+            const { res } = await requestWithRedirects(parsedInput.url, { method: 'HEAD', hfToken });
+            res.resume();
+            if (res.statusCode === 401 || res.statusCode === 403) {
+                throw new Error('Модель требует авторизации (HF Token) на Hugging Face');
+            }
+            if (res.statusCode >= 400) {
+                throw new Error(`Сервер вернул HTTP ${res.statusCode}`);
+            }
+            sizeBytes = parseInt(res.headers['content-length'] || '0', 10) || 0;
+        } catch (headErr) {
+            if (headErr.message.includes('HF Token') || headErr.message.includes('HTTP 4')) throw headErr;
+            statusNote = 'Размер уточнится при старте загрузки';
+        }
+        const sizeGB = sizeBytes > 0 ? +(sizeBytes / (1024 ** 3)).toFixed(2) : 0;
+        const detectedTemplate = detectTemplateFamily(parsedInput.filename, null);
+        return {
+            kind: 'file',
+            file: {
+                filename: parsedInput.filename,
+                path: parsedInput.filename,
+                url: parsedInput.url,
+                sizeBytes,
+                sizeGB,
+                statusNote,
+                suggestedOllamaName: suggestOllamaModelName(parsedInput.filename),
+                detectedTemplate,
+                compatibility: sizeGB > 0 ? computeHardwareCompatibility(sizeGB, hwSpecs) : null
+            },
+            hardware: hwSpecs
+        };
+    }
+
+    const { owner, repo, branch } = parsedInput;
+    const apiUrl = `https://huggingface.co/api/models/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/tree/${encodeURIComponent(branch)}?recursive=true`;
+    const { res } = await requestWithRedirects(apiUrl, { method: 'GET', hfToken });
+    const rawBody = await new Promise((resolve, reject) => {
+        let data = '';
+        res.on('data', chunk => {
+            data += chunk;
+            if (data.length > 8 * 1024 * 1024) res.destroy(new Error('Ответ Hugging Face API слишком большой'));
+        });
+        res.on('end', () => resolve(data));
+        res.on('error', reject);
+    });
+
+    if (res.statusCode === 401 || res.statusCode === 403) {
+        throw new Error('Закрытый репозиторий Hugging Face: укажите HF Token');
+    }
+    if (res.statusCode === 404) {
+        throw new Error(`Репозиторий "${owner}/${repo}" или ветка "${branch}" не найдены`);
+    }
+    if (res.statusCode >= 400) {
+        throw new Error(`Hugging Face API вернул HTTP ${res.statusCode}`);
+    }
+
+    const tree = JSON.parse(rawBody);
+    if (!Array.isArray(tree)) throw new Error('Неожиданный формат ответа Hugging Face API');
+
+    const files = tree
+        .filter(item => item && item.type === 'file' && typeof item.path === 'string' && item.path.toLowerCase().endsWith('.gguf'))
+        .map(item => {
+            const filename = sanitizeGgufFilename(path.basename(item.path)) || path.basename(item.path);
+            const sizeBytes = Number(item.size || (item.lfs && item.lfs.size) || 0);
+            const sizeGB = +(sizeBytes / (1024 ** 3)).toFixed(2);
+            const encodedPath = item.path.split('/').map(encodeURIComponent).join('/');
+            return {
+                filename,
+                repoPath: item.path,
+                url: `https://huggingface.co/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/resolve/${encodeURIComponent(branch)}/${encodedPath}?download=true`,
+                sizeBytes,
+                sizeGB,
+                suggestedOllamaName: suggestOllamaModelName(filename),
+                detectedTemplate: detectTemplateFamily(filename, null),
+                compatibility: computeHardwareCompatibility(sizeGB, hwSpecs)
+            };
+        })
+        .sort((a, b) => {
+            const rank = f => {
+                const n = f.filename.toLowerCase();
+                if (n.includes('q4_k_m')) return 0;
+                if (n.includes('q4_k_s') || n.includes('q4_0')) return 1;
+                if (n.includes('q5_k_m')) return 2;
+                return 3;
+            };
+            return rank(a) - rank(b) || a.sizeBytes - b.sizeBytes;
+        });
+
+    if (files.length === 0) {
+        throw new Error(`В репозитории ${owner}/${repo} не найдено ни одного .gguf файла`);
+    }
+
+    return {
+        kind: 'repo',
+        repoId: `${owner}/${repo}`,
+        branch,
+        files,
+        hardware: hwSpecs
+    };
+}
+
+let hfDownloadState = {
+    active: false,
+    status: 'idle',
+    filename: '',
+    url: '',
+    downloadedBytes: 0,
+    totalBytes: 0,
+    percent: 0,
+    speedMBps: 0,
+    error: '',
+    startedAt: null,
+    finishedAt: null
+};
+let activeHfRequest = null;
+let activeHfResponse = null;
+let activeHfWriteStream = null;
+let activeHfPartPath = '';
+
+function getPublicHfDownloadState() {
+    return { ...hfDownloadState };
+}
+
+function cleanupPartFile(partPath) {
+    if (partPath && fs.existsSync(partPath)) {
+        try { fs.unlinkSync(partPath); } catch (_) {}
+    }
+}
+
+function destroyWriteStreamAndCleanup(ws, partPath) {
+    if (ws && !ws.destroyed) {
+        ws.once('close', () => cleanupPartFile(partPath));
+        try { ws.destroy(); } catch (_) { cleanupPartFile(partPath); }
+    } else {
+        cleanupPartFile(partPath);
+    }
+}
+
+function cancelActiveHfDownload() {
+    if (!hfDownloadState.active) return false;
+    hfDownloadState.active = false;
+    hfDownloadState.status = 'cancelled';
+    hfDownloadState.error = 'Загрузка отменена пользователем';
+    hfDownloadState.finishedAt = getLocalTimestamp();
+    try { if (activeHfResponse) activeHfResponse.destroy(); } catch (_) {}
+    try { if (activeHfRequest) activeHfRequest.destroy(); } catch (_) {}
+    destroyWriteStreamAndCleanup(activeHfWriteStream, activeHfPartPath);
+    activeHfRequest = null;
+    activeHfResponse = null;
+    activeHfWriteStream = null;
+    activeHfPartPath = '';
+    return true;
+}
+
+async function startHfDownloadJob(rawInput, customFilename = '', hfToken = '') {
+    if (hfDownloadState.active) {
+        throw new Error(`Уже идёт загрузка "${hfDownloadState.filename}". Дождитесь окончания или отмените её.`);
+    }
+    const parsedInput = parseHuggingFaceInput(rawInput);
+    if (parsedInput.kind !== 'file') {
+        throw new Error('Для скачивания выберите конкретный .gguf файл из репозитория');
+    }
+
+    const safeTarget = resolveSafeModelFilePath(customFilename || parsedInput.filename);
+    if (!safeTarget) {
+        throw new Error('Некорректное имя .gguf файла');
+    }
+
+    ensureDirExists(MODELS_DIR, 'models');
+    const partPath = `${safeTarget.fullPath}.part_${Date.now()}`;
+    activeHfPartPath = partPath;
+
+    hfDownloadState = {
+        active: true,
+        status: 'connecting',
+        filename: safeTarget.filename,
+        url: parsedInput.url,
+        downloadedBytes: 0,
+        totalBytes: 0,
+        percent: 0,
+        speedMBps: 0,
+        error: '',
+        startedAt: getLocalTimestamp(),
+        finishedAt: null
+    };
+
+    const failJob = (msg) => {
+        if (hfDownloadState.status === 'cancelled') return;
+        hfDownloadState.active = false;
+        hfDownloadState.status = 'error';
+        hfDownloadState.error = msg;
+        hfDownloadState.finishedAt = getLocalTimestamp();
+        destroyWriteStreamAndCleanup(activeHfWriteStream, partPath);
+        activeHfRequest = null;
+        activeHfResponse = null;
+        activeHfWriteStream = null;
+        activeHfPartPath = '';
+        writeLog('ERROR', `[HF-Download] ${safeTarget.filename}: ${msg}`);
+    };
+
+    (async () => {
+        try {
+            const { res, req } = await requestWithRedirects(parsedInput.url, { method: 'GET', hfToken });
+            activeHfRequest = req;
+            activeHfResponse = res;
+
+            if (res.statusCode === 401 || res.statusCode === 403) {
+                res.resume();
+                failJob('Доступ запрещён (HTTP ' + res.statusCode + ') — проверьте HF Token');
+                return;
+            }
+            if (res.statusCode >= 400) {
+                res.resume();
+                failJob(`Сервер вернул HTTP ${res.statusCode}`);
+                return;
+            }
+
+            hfDownloadState.status = 'downloading';
+            hfDownloadState.totalBytes = parseInt(res.headers['content-length'] || '0', 10) || 0;
+
+            const ws = fs.createWriteStream(partPath);
+            activeHfWriteStream = ws;
+
+            let magicChecked = false;
+            let headChunk = Buffer.alloc(0);
+            const startMs = Date.now();
+
+            ws.on('drain', () => {
+                if (hfDownloadState.active && !res.destroyed) res.resume();
+            });
+
+            res.on('data', (chunk) => {
+                if (!hfDownloadState.active) return;
+                let dataToWrite = chunk;
+                if (!magicChecked) {
+                    headChunk = Buffer.concat([headChunk, chunk]);
+                    if (headChunk.length < 4) return;
+                    magicChecked = true;
+                    if (headChunk.toString('ascii', 0, 4) !== 'GGUF') {
+                        res.destroy();
+                        failJob('Скачиваемый файл не является GGUF (получен HTML или другой формат)');
+                        return;
+                    }
+                    dataToWrite = headChunk;
+                    headChunk = null;
+                }
+                hfDownloadState.downloadedBytes += dataToWrite.length;
+                if (hfDownloadState.totalBytes > 0) {
+                    hfDownloadState.percent = Math.min(99, Math.round((hfDownloadState.downloadedBytes / hfDownloadState.totalBytes) * 100));
+                }
+                const elapsedSec = Math.max(0.25, (Date.now() - startMs) / 1000);
+                hfDownloadState.speedMBps = +((hfDownloadState.downloadedBytes / (1024 * 1024)) / elapsedSec).toFixed(2);
+                if (!ws.write(dataToWrite)) {
+                    res.pause();
+                }
+            });
+
+            res.on('end', () => {
+                if (!hfDownloadState.active) return;
+                if (!magicChecked) {
+                    failJob('Скачанный файл слишком мал или не является GGUF');
+                    return;
+                }
+                ws.end();
+            });
+
+            ws.on('finish', () => {
+                if (!hfDownloadState.active) return;
+                try {
+                    if (!magicChecked || fs.statSync(partPath).size < 16) {
+                        failJob('Файл повреждён или слишком мал');
+                        return;
+                    }
+                    fs.renameSync(partPath, safeTarget.fullPath);
+                    hfDownloadState.active = false;
+                    hfDownloadState.status = 'completed';
+                    hfDownloadState.percent = 100;
+                    hfDownloadState.finishedAt = getLocalTimestamp();
+                    activeHfRequest = null;
+                    activeHfResponse = null;
+                    activeHfWriteStream = null;
+                    activeHfPartPath = '';
+                    writeLog('INFO', `[HF-Download] Модель ${safeTarget.filename} успешно скачана в models/`);
+                } catch (finErr) {
+                    failJob(finErr.message);
+                }
+            });
+
+            res.on('error', (err) => failJob(err.message));
+            ws.on('error', (err) => failJob(err.message));
+        } catch (err) {
+            failJob(err.message);
+        }
+    })();
+
+    return getPublicHfDownloadState();
+}
+
+async function listLocalGgufModels() {
+    ensureDirExists(MODELS_DIR, 'models');
+    const [installedModels, hwSpecs] = await Promise.all([
+        getLocalOllamaModels(),
+        getSystemHardwareSpecs()
+    ]);
+    const installedNames = new Set((installedModels || []).map(m => String(m.name || '').toLowerCase()));
+
+    const entries = fs.readdirSync(MODELS_DIR, { withFileTypes: true });
+    const files = [];
+
+    for (const entry of entries) {
+        if (!entry.isFile() || !entry.name.toLowerCase().endsWith('.gguf')) continue;
+        const safe = resolveSafeModelFilePath(entry.name);
+        if (!safe) continue;
+        const stat = fs.statSync(safe.fullPath);
+        const sizeGB = +(stat.size / (1024 ** 3)).toFixed(2);
+        const ggufMeta = readGgufMetadata(safe.fullPath);
+        const detectedTemplate = detectTemplateFamily(safe.filename, ggufMeta);
+        const suggestedOllamaName = suggestOllamaModelName(safe.filename);
+        const numCtx = ggufMeta.contextLength && ggufMeta.contextLength >= 2048
+            ? Math.min(ggufMeta.contextLength, detectedTemplate === 'gemma2' ? 8192 : 32768)
+            : (GGUF_TEMPLATES[detectedTemplate]?.defaultNumCtx || 32768);
+
+        files.push({
+            filename: safe.filename,
+            sizeBytes: stat.size,
+            sizeGB,
+            modifiedAt: stat.mtime.toISOString(),
+            ggufMeta: {
+                validMagic: ggufMeta.validMagic,
+                version: ggufMeta.version,
+                architecture: ggufMeta.architecture || '',
+                modelName: ggufMeta.modelName || '',
+                hasEmbeddedTemplate: Boolean(ggufMeta.chatTemplate),
+                contextLength: ggufMeta.contextLength || null
+            },
+            detectedTemplate,
+            detectedTemplateLabel: GGUF_TEMPLATES[detectedTemplate]?.label || detectedTemplate,
+            suggestedOllamaName,
+            recommendedNumCtx: numCtx,
+            alreadyImported: installedNames.has(suggestedOllamaName.toLowerCase()),
+            compatibility: computeHardwareCompatibility(sizeGB, hwSpecs),
+            modelfilePreview: buildModelfileContent({
+                ggufFilename: safe.filename,
+                ggufAbsPath: safe.fullPath,
+                templateFamily: detectedTemplate,
+                numCtx,
+                useRelativePath: true
+            })
+        });
+    }
+
+    files.sort((a, b) => new Date(b.modifiedAt) - new Date(a.modifiedAt));
+    return {
+        modelsDir: MODELS_DIR,
+        files,
+        templates: Object.values(GGUF_TEMPLATES).map(t => ({ id: t.id, label: t.label, defaultNumCtx: t.defaultNumCtx })),
+        hardware: hwSpecs,
+        hfDownload: getPublicHfDownloadState()
+    };
+}
+
 const server = http.createServer((req, res) => {
     // 1. Логирование событий от фронтенда
     if (req.url === '/api/client-log' && req.method === 'POST') {
@@ -3023,6 +3908,348 @@ ${materialsText || noMaterialsNote}
                 (r) => { currentOllamaReq = r; }
             );
         });
+        return;
+    }
+
+    // 8.9 Stage 3: Локальные GGUF модели (models/), генерация Modelfile, ollama create и Hugging Face
+    const reqPathname = (req.url || '/').split('?')[0];
+
+    if (reqPathname === '/api/models/gguf' && req.method === 'GET') {
+        listLocalGgufModels()
+            .then(data => {
+                res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ status: 'ok', ...data }));
+            })
+            .catch(err => {
+                writeLog('ERROR', `[GGUF] Ошибка сканирования папки models/: ${err.message}`);
+                res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ error: err.message, files: [] }));
+            });
+        return;
+    }
+
+    if (reqPathname === '/api/models/gguf/upload' && req.method === 'POST') {
+        let rawName = '';
+        try {
+            const parsedReqUrl = new URL(req.url, 'http://127.0.0.1');
+            rawName = parsedReqUrl.searchParams.get('filename') || '';
+        } catch (_) {}
+        if (!rawName && req.headers['x-filename']) {
+            try { rawName = decodeURIComponent(String(req.headers['x-filename'])); } catch (_) { rawName = String(req.headers['x-filename']); }
+        }
+        const safeTarget = resolveSafeModelFilePath(rawName);
+        if (!safeTarget) {
+            req.resume();
+            res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ error: 'Разрешена загрузка только файлов с расширением .gguf и безопасным именем.' }));
+            return;
+        }
+
+        ensureDirExists(MODELS_DIR, 'models');
+        const partPath = `${safeTarget.fullPath}.part_${Date.now()}`;
+        const ws = fs.createWriteStream(partPath);
+        let magicChecked = false;
+        let headBuf = Buffer.alloc(0);
+        let aborted = false;
+        let receivedBytes = 0;
+
+        const failUpload = (code, msg) => {
+            if (aborted) return;
+            aborted = true;
+            destroyWriteStreamAndCleanup(ws, partPath);
+            if (!res.headersSent) {
+                res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Connection': 'close' });
+                res.end(JSON.stringify({ error: msg }));
+            }
+            setTimeout(() => { try { if (!req.destroyed) req.destroy(); } catch (_) {} }, 50);
+        };
+
+        req.on('data', (chunk) => {
+            if (aborted) return;
+            receivedBytes += chunk.length;
+            let dataToWrite = chunk;
+            if (!magicChecked) {
+                headBuf = Buffer.concat([headBuf, chunk]);
+                if (headBuf.length < 4) return;
+                magicChecked = true;
+                if (headBuf.toString('ascii', 0, 4) !== 'GGUF') {
+                    failUpload(400, 'Файл не содержит заголовок GGUF (проверьте, что это настоящая .gguf модель).');
+                    return;
+                }
+                dataToWrite = headBuf;
+                headBuf = null;
+            }
+            if (!ws.write(dataToWrite)) {
+                req.pause();
+            }
+        });
+
+        ws.on('drain', () => {
+            if (!aborted) req.resume();
+        });
+
+        req.on('aborted', () => failUpload(499, 'Загрузка файла прервана'));
+        req.on('error', (err) => failUpload(500, err.message));
+        ws.on('error', (err) => failUpload(500, err.message));
+
+        req.on('end', () => {
+            if (aborted) return;
+            if (!magicChecked || receivedBytes < 16) {
+                failUpload(400, 'Файл слишком мал или не является валидным GGUF');
+                return;
+            }
+            ws.end(() => {
+                if (aborted) return;
+                try {
+                    fs.renameSync(partPath, safeTarget.fullPath);
+                    const meta = readGgufMetadata(safeTarget.fullPath);
+                    const detectedTemplate = detectTemplateFamily(safeTarget.filename, meta);
+                    writeLog('INFO', `[GGUF] Загружен файл ${safeTarget.filename} (${(receivedBytes / (1024 ** 2)).toFixed(1)} MB, template=${detectedTemplate})`);
+                    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({
+                        status: 'ok',
+                        filename: safeTarget.filename,
+                        sizeBytes: receivedBytes,
+                        detectedTemplate,
+                        ggufMeta: meta
+                    }));
+                } catch (finErr) {
+                    failUpload(500, finErr.message);
+                }
+            });
+        });
+        return;
+    }
+
+    if (reqPathname.startsWith('/api/models/gguf/') && req.method === 'DELETE') {
+        let rawName = '';
+        try { rawName = decodeURIComponent(reqPathname.slice('/api/models/gguf/'.length)); } catch (_) {}
+        const safeTarget = resolveSafeModelFilePath(rawName);
+        if (!safeTarget) {
+            res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ error: 'Некорректное имя .gguf файла' }));
+            return;
+        }
+        if (!fs.existsSync(safeTarget.fullPath)) {
+            res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ error: 'Файл не найден в папке models/' }));
+            return;
+        }
+        try {
+            fs.unlinkSync(safeTarget.fullPath);
+            const mfPath = safeTarget.fullPath.replace(/\.gguf$/i, '.Modelfile');
+            if (fs.existsSync(mfPath)) {
+                try { fs.unlinkSync(mfPath); } catch (_) {}
+            }
+            writeLog('INFO', `[GGUF] Удалён локальный файл ${safeTarget.filename}`);
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ status: 'ok', deleted: safeTarget.filename }));
+        } catch (delErr) {
+            res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ error: delErr.message }));
+        }
+        return;
+    }
+
+    if (reqPathname === '/api/models/gguf/modelfile-preview' && req.method === 'POST') {
+        readJsonBody(req, (err, body) => {
+            if (err || !body || !body.filename) {
+                res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ error: 'Требуется поле filename' }));
+                return;
+            }
+            const safeTarget = resolveSafeModelFilePath(body.filename);
+            if (!safeTarget) {
+                res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ error: 'Некорректное имя .gguf файла' }));
+                return;
+            }
+            const meta = fs.existsSync(safeTarget.fullPath) ? readGgufMetadata(safeTarget.fullPath) : null;
+            const detectedTemplate = detectTemplateFamily(safeTarget.filename, meta);
+            const chosenFamily = (body.templateFamily && GGUF_TEMPLATES[body.templateFamily]) ? body.templateFamily : detectedTemplate;
+            const modelfile = buildModelfileContent({
+                ggufFilename: safeTarget.filename,
+                ggufAbsPath: safeTarget.fullPath,
+                templateFamily: chosenFamily,
+                numCtx: body.numCtx,
+                temperature: body.temperature,
+                systemPrompt: body.systemPrompt,
+                useRelativePath: true
+            });
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ status: 'ok', detectedTemplate, templateFamily: chosenFamily, modelfile }));
+        });
+        return;
+    }
+
+    if (reqPathname === '/api/models/gguf/import' && req.method === 'POST') {
+        readJsonBody(req, (err, body) => {
+            if (err || !body || !body.filename) {
+                res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ error: 'Требуется поле filename' }));
+                return;
+            }
+            const safeTarget = resolveSafeModelFilePath(body.filename);
+            if (!safeTarget || !fs.existsSync(safeTarget.fullPath)) {
+                res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ error: 'Указанный .gguf файл не найден в папке models/' }));
+                return;
+            }
+
+            const ollamaModelName = sanitizeOllamaModelName(body.modelName, safeTarget.filename);
+            const meta = readGgufMetadata(safeTarget.fullPath);
+            const detectedTemplate = detectTemplateFamily(safeTarget.filename, meta);
+            const templateFamily = (body.templateFamily && GGUF_TEMPLATES[body.templateFamily]) ? body.templateFamily : detectedTemplate;
+            const modelfileContent = buildModelfileContent({
+                ggufFilename: safeTarget.filename,
+                ggufAbsPath: safeTarget.fullPath,
+                templateFamily,
+                numCtx: body.numCtx,
+                temperature: body.temperature,
+                systemPrompt: body.systemPrompt,
+                useRelativePath: true
+            });
+
+            const modelfileName = safeTarget.filename.replace(/\.gguf$/i, '.Modelfile');
+            const modelfilePath = path.join(MODELS_DIR, modelfileName);
+            try {
+                fs.writeFileSync(modelfilePath, modelfileContent, 'utf8');
+            } catch (mfErr) {
+                res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ error: 'Не удалось сохранить Modelfile: ' + mfErr.message }));
+                return;
+            }
+
+            res.writeHead(200, {
+                'Content-Type': 'application/x-ndjson; charset=utf-8',
+                'Cache-Control': 'no-cache',
+                'Connection': 'keep-alive'
+            });
+
+            const sendLine = (obj) => {
+                if (!res.writableEnded) {
+                    res.write(JSON.stringify(obj) + '\n');
+                }
+            };
+
+            const ollamaPath = getOllamaExecutablePath();
+            writeLog('INFO', `[GGUF-Import] Запуск "ollama create ${ollamaModelName} -f ${modelfileName}" (template=${templateFamily})`);
+            sendLine({ status: `Создание Modelfile (${templateFamily}) и запуск ollama create ${ollamaModelName}...`, percent: 5 });
+
+            const child = spawn(ollamaPath, ['create', ollamaModelName, '-f', modelfileName], {
+                cwd: MODELS_DIR,
+                stdio: ['ignore', 'pipe', 'pipe'],
+                env: { ...process.env, NO_COLOR: '1' }
+            });
+
+            let clientClosed = false;
+            let lastOutputLines = [];
+
+            const handleOutput = (chunk) => {
+                const cleaned = chunk
+                    .toString('utf8')
+                    .replace(/\x1B\[[0-9;?]*[A-Za-z]/g, '')
+                    .replace(/[\u2800-\u28FF]/g, '')
+                    .trim();
+                if (!cleaned) return;
+                const parts = cleaned.split(/[\r\n]+/).map(s => s.trim()).filter(Boolean);
+                for (const line of parts) {
+                    lastOutputLines.push(line);
+                    if (lastOutputLines.length > 10) lastOutputLines.shift();
+                    const pctMatch = line.match(/(\d{1,3})%/);
+                    const pct = pctMatch ? Math.min(99, parseInt(pctMatch[1], 10)) : null;
+                    sendLine({ status: line, ...(pct !== null ? { percent: pct } : {}) });
+                }
+            };
+
+            child.stdout.on('data', handleOutput);
+            child.stderr.on('data', handleOutput);
+
+            res.on('close', () => {
+                if (!res.writableEnded) {
+                    clientClosed = true;
+                    try { child.kill(); } catch (_) {}
+                }
+            });
+
+            child.on('error', (spawnErr) => {
+                writeLog('ERROR', `[GGUF-Import] Сбой запуска ollama create: ${spawnErr.message}`);
+                sendLine({ error: `Не удалось запустить ollama create: ${spawnErr.message}` });
+                if (!res.writableEnded) res.end();
+            });
+
+            child.on('close', (code) => {
+                if (!clientClosed) {
+                    if (code === 0) {
+                        writeLog('INFO', `[GGUF-Import] Модель "${ollamaModelName}" успешно импортирована в Ollama!`);
+                        sendLine({
+                            status: `✅ Модель "${ollamaModelName}" создана и готова к работе!`,
+                            percent: 100,
+                            done: true,
+                            modelName: ollamaModelName,
+                            templateFamily
+                        });
+                    } else {
+                        const reason = lastOutputLines.slice(-3).join(' | ') || `Код выхода ${code}`;
+                        writeLog('ERROR', `[GGUF-Import] Ошибка создания "${ollamaModelName}": ${reason}`);
+                        sendLine({ error: `Ошибка ollama create: ${reason}` });
+                    }
+                }
+                if (!res.writableEnded && !res.destroyed) res.end();
+            });
+        });
+        return;
+    }
+
+    if (reqPathname === '/api/models/hf/inspect' && req.method === 'GET') {
+        let input = '';
+        try {
+            const parsedReqUrl = new URL(req.url, 'http://127.0.0.1');
+            input = parsedReqUrl.searchParams.get('input') || '';
+        } catch (_) {}
+        const hfToken = req.headers['x-hf-token'] ? String(req.headers['x-hf-token']) : '';
+        inspectHuggingFaceInput(input, hfToken)
+            .then(data => {
+                res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ status: 'ok', ...data }));
+            })
+            .catch(err => {
+                res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ error: err.message }));
+            });
+        return;
+    }
+
+    if (reqPathname === '/api/models/hf/download' && req.method === 'POST') {
+        readJsonBody(req, async (err, body) => {
+            if (err || !body || (!body.url && !body.input)) {
+                res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ error: 'Требуется ссылка url или input' }));
+                return;
+            }
+            try {
+                const job = await startHfDownloadJob(body.url || body.input, body.filename || '', body.hfToken || '');
+                res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ status: 'ok', job }));
+            } catch (dlErr) {
+                const code = dlErr.message.includes('Уже идёт') ? 409 : 400;
+                res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ error: dlErr.message }));
+            }
+        });
+        return;
+    }
+
+    if (reqPathname === '/api/models/hf/status' && req.method === 'GET') {
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ status: 'ok', job: getPublicHfDownloadState() }));
+        return;
+    }
+
+    if (reqPathname === '/api/models/hf/cancel' && req.method === 'POST') {
+        const cancelled = cancelActiveHfDownload();
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ status: 'ok', cancelled, job: getPublicHfDownloadState() }));
         return;
     }
 
