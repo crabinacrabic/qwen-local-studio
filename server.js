@@ -1,4 +1,4 @@
-const http = require('http');
+﻿const http = require('http');
 const https = require('https');
 const { URL } = require('url');
 const fs = require('fs');
@@ -728,6 +728,76 @@ function fetchOllamaQwenLibrary() {
     });
 }
 
+function computeHardwareCompatibility(sizeGB, hwSpecs = null) {
+    const vramLimit = hwSpecs && hwSpecs.vramGB ? hwSpecs.vramGB : 8.0;
+    const ramLimit = hwSpecs && hwSpecs.ramTotalGB ? hwSpecs.ramTotalGB : 16.0;
+    const val = Number(sizeGB) || 0;
+
+    if (val <= (vramLimit - 0.5)) {
+        return {
+            status: 'gpu_ready',
+            color: '#2ea043',
+            badge: '🟢 100% GPU',
+            text: `Влезает в видеопамять (${vramLimit} GB VRAM) — максимальная скорость`
+        };
+    }
+    if (val <= (ramLimit - 2.0)) {
+        return {
+            status: 'ram_offload',
+            color: '#d29922',
+            badge: '🟡 RAM Offload',
+            text: `Требует оперативную память (${ramLimit} GB RAM) — умеренная скорость`
+        };
+    }
+    if (val <= (vramLimit + ramLimit - 4.0)) {
+        return {
+            status: 'ram_offload',
+            color: '#d29922',
+            badge: '🟡 RAM Offload',
+            text: `Частичная выгрузка в VRAM + ${ramLimit} GB RAM (~5–8 ток/сек)`
+        };
+    }
+    return {
+        status: 'oom_risk',
+        color: '#da3633',
+        badge: '🔴 Недостаточно памяти',
+        text: `Слишком тяжелая модель (${val.toFixed(1)} GB) для ${vramLimit} GB VRAM + ${ramLimit} GB RAM`
+    };
+}
+
+function parseSizeGBFromLabel(sizeStr) {
+    if (!sizeStr) return 5.0;
+    const m = String(sizeStr).match(/(\d+(?:\.\d+)?)\s*(GB|MB)/i);
+    if (!m) return 5.0;
+    const num = parseFloat(m[1]);
+    return m[2].toUpperCase() === 'MB' ? +(num / 1024).toFixed(2) : num;
+}
+
+function inferTierAndVram(name, isUncensored = false) {
+    if (name.includes('8x7b') || name.includes('8x22b')) {
+        return { tier: 'expert', tierName: '🧠 MoE (Экспертный)', approxVramGB: name.includes('8x22b') ? 80.0 : 26.0 };
+    }
+    if (name.includes('70b') || name.includes('72b')) {
+        return { tier: 'expert', tierName: '🧠 Экспертный (70B)', approxVramGB: 42.0 };
+    }
+    if (name.includes('27b') || name.includes('30b') || name.includes('32b')) {
+        return { tier: 'expert', tierName: '🧠 Экспертный', approxVramGB: 18.0 };
+    }
+    if (name.includes('14b')) {
+        return { tier: 'expert', tierName: '🧠 Продвинутый (14B)', approxVramGB: 9.0 };
+    }
+    if (name.includes('0.5b') || name.includes('0.6b') || name.includes('0.8b') || name.includes(':1b') || name.includes('1.5b') || name.includes('1.7b') || name.includes(':2b')) {
+        return { tier: 'light', tierName: '🌱 Ультралегкий', approxVramGB: isUncensored ? 2.0 : 1.8 };
+    }
+    if (name.includes(':3b') || name.includes(':4b')) {
+        return { tier: 'balanced', tierName: '🚀 Сбалансированный', approxVramGB: 3.4 };
+    }
+    if (name.includes('7b') || name.includes('8b') || name.includes('9b')) {
+        return { tier: 'flagship', tierName: '⚡ Флагман', approxVramGB: isUncensored ? 5.5 : 5.4 };
+    }
+    return { tier: 'expert', tierName: '🧠 Экспертный', approxVramGB: 18.0 };
+}
+
 function classifyModel(modelName, sizeBytes = 0, hwSpecs = null) {
     const name = (modelName || '').toLowerCase();
     let modelClass = 'chat';
@@ -757,30 +827,32 @@ function classifyModel(modelName, sizeBytes = 0, hwSpecs = null) {
     } else if (name.includes('abliterated') || name.includes('uncensored') || name.includes('dolphin')) {
         modelClass = 'uncensored';
         className = '🔓 Без цензуры (Abliterated)';
-        if (name.includes('0.8b') || name.includes('1.5b') || name.includes('2b')) {
-            tier = 'light';
-            tierName = '🌱 Ультралегкий';
-            approxVramGB = 2.0;
-        } else if (name.includes('3b') || name.includes('4b')) {
-            tier = 'balanced';
-            tierName = '🚀 Сбалансированный';
-            approxVramGB = 3.3;
-        } else if (name.includes('7b') || name.includes('8b') || name.includes('9b')) {
-            tier = 'flagship';
-            tierName = '⚡ Флагман';
-            approxVramGB = 5.5;
-        } else if (name.includes('14b')) {
-            tier = 'flagship';
-            tierName = '⚡ Продвинутый (14B)';
-            approxVramGB = 9.0;
+        const inferred = inferTierAndVram(name, true);
+        tier = inferred.tier;
+        tierName = inferred.tierName;
+        approxVramGB = inferred.approxVramGB;
+
+        if (name.includes('dolphin3')) {
+            generation = 'Dolphin 3.0';
+            releaseDate = '2025';
+            lineage = 'Dolphin 3.0 (база Llama 3.1) — без фильтров отказа';
+        } else if (name.includes('dolphin-mistral')) {
+            generation = 'Dolphin Mistral';
+            releaseDate = '2024';
+            lineage = 'Dolphin Mistral 7B — без фильтров отказа';
+        } else if (name.includes('dolphin') && name.includes('qwen')) {
+            generation = 'Dolphin Qwen';
+            releaseDate = '2024–2025';
+            lineage = 'Dolphin Qwen — открытая модель без шаблонов отказа';
+        } else if (name.includes('dolphin-llama3')) {
+            generation = 'Dolphin 2.9';
+            releaseDate = '2024';
+            lineage = 'Dolphin Llama 3 — без фильтров отказа';
         } else {
-            tier = 'expert';
-            tierName = '🧠 Экспертный';
-            approxVramGB = 18.0;
+            generation = name.includes('3.5') ? '3.5' : (name.includes('qwen3') ? '3.0' : 'Abliterated');
+            releaseDate = '2025–2026';
+            lineage = 'Модифицированная версия со снятыми шаблонами отказа (abliterated)';
         }
-        generation = name.includes('3.5') ? '3.5' : (name.includes('qwen3') ? '3.0' : 'Abliterated');
-        releaseDate = '2025–2026';
-        lineage = 'Модифицированная версия со снятыми шаблонами отказа (abliterated)';
     } else if (name.includes('-vl') || name.includes('vl:')) {
         modelClass = 'vision';
         className = '👁️ Зрение (Vision)';
@@ -816,8 +888,8 @@ function classifyModel(modelName, sizeBytes = 0, hwSpecs = null) {
             tierName = '⚡ Флагман';
             approxVramGB = 4.7;
         } else if (name.includes('14b')) {
-            tier = 'flagship';
-            tierName = '⚡ Продвинутый';
+            tier = 'expert';
+            tierName = '🧠 Экспертный (14B)';
             approxVramGB = 9.5;
         } else {
             tier = 'expert';
@@ -827,27 +899,46 @@ function classifyModel(modelName, sizeBytes = 0, hwSpecs = null) {
         generation = name.includes('qwen3') ? '3.0' : '2.5';
         releaseDate = name.includes('qwen3') ? (OLLAMA_DATES_CACHE.dates['qwen3-coder'] || 'Сентябрь 2025') : (OLLAMA_DATES_CACHE.dates['qwen2.5'] || 'Сентябрь 2024');
         lineage = 'Специализированная модель для разработки и рефакторинга';
+    } else if (name.startsWith('deepseek-r1') || name.startsWith('llama3') || name.startsWith('mistral') || name.startsWith('mixtral') || name.startsWith('gemma')) {
+        modelClass = 'openweights';
+        className = '🌐 Open-Weights';
+        const inferred = inferTierAndVram(name, false);
+        tier = inferred.tier;
+        tierName = inferred.tierName;
+        approxVramGB = inferred.approxVramGB;
+
+        if (name.startsWith('deepseek-r1')) {
+            generation = 'DeepSeek-R1';
+            releaseDate = 'Январь 2025';
+            lineage = 'DeepSeek-R1 Distill — пошаговое рассуждение (<think>)';
+        } else if (name.startsWith('llama3.2')) {
+            generation = 'Llama 3.2';
+            releaseDate = 'Сентябрь 2024';
+            lineage = 'Meta Llama 3.2 — компактная открытая модель';
+        } else if (name.startsWith('llama3.1') || name.startsWith('llama3')) {
+            generation = 'Llama 3.1';
+            releaseDate = 'Июль 2024';
+            lineage = 'Meta Llama 3.1 — мировой стандарт open-weights';
+        } else if (name.startsWith('mixtral')) {
+            generation = 'Mixtral MoE';
+            releaseDate = 'Декабрь 2023';
+            lineage = 'Mistral AI Mixture-of-Experts (8x7B / 8x22B)';
+        } else if (name.startsWith('mistral')) {
+            generation = 'Mistral v0.3';
+            releaseDate = 'Май 2024';
+            lineage = 'Mistral AI 7B — быстрая универсальная модель';
+        } else {
+            generation = 'Gemma 2';
+            releaseDate = 'Июнь 2024';
+            lineage = 'Google Gemma 2 — эффективная открытая модель (контекст 8K)';
+        }
     } else {
         modelClass = 'chat';
         className = '💬 Чат и логика';
-
-        if (name.includes('0.5b') || name.includes('0.6b') || name.includes('1.5b') || name.includes('1.7b') || name.includes(':2b') || name.includes('0.8b')) {
-            tier = 'light';
-            tierName = '🌱 Ультралегкий';
-            approxVramGB = 1.8;
-        } else if (name.includes(':3b') || name.includes(':4b')) {
-            tier = 'balanced';
-            tierName = '🚀 Сбалансированный';
-            approxVramGB = 3.4;
-        } else if (name.includes(':7b') || name.includes(':8b') || name.includes(':9b') || name.includes(':14b')) {
-            tier = 'flagship';
-            tierName = '⚡ Флагман';
-            approxVramGB = 6.6;
-        } else {
-            tier = 'expert';
-            tierName = '🧠 Экспертный';
-            approxVramGB = 18.0;
-        }
+        const inferred = inferTierAndVram(name, false);
+        tier = inferred.tier;
+        tierName = inferred.tierName;
+        approxVramGB = name.includes(':7b') || name.includes(':8b') || name.includes(':9b') ? 6.6 : inferred.approxVramGB;
 
         if (name.startsWith('qwen3.8-flash-next')) {
             generation = '3.8-Next';
@@ -882,33 +973,7 @@ function classifyModel(modelName, sizeBytes = 0, hwSpecs = null) {
         approxVramGB = Math.max(approxVramGB, parseFloat((sizeBytes / 1024 / 1024 / 1024).toFixed(1)));
     }
 
-    const vramLimit = hwSpecs && hwSpecs.vramGB ? hwSpecs.vramGB : 8.0;
-    const ramLimit = hwSpecs && hwSpecs.ramTotalGB ? hwSpecs.ramTotalGB : 16.0;
-
-    let compatibility = {
-        status: 'gpu_ready',
-        color: '#2ea043',
-        badge: '🟢 100% GPU',
-        text: `Влезает в видеопамять (${vramLimit} GB VRAM) — максимальная скорость`
-    };
-
-    if (approxVramGB > (vramLimit - 0.5)) {
-        if (approxVramGB <= (ramLimit - 2.0)) {
-            compatibility = {
-                status: 'ram_offload',
-                color: '#d29922',
-                badge: '🟡 RAM Offload',
-                text: `Требует оперативную память (${ramLimit} GB RAM) — умеренная скорость`
-            };
-        } else {
-            compatibility = {
-                status: 'oom_risk',
-                color: '#da3633',
-                badge: '🔴 Недостаточно памяти',
-                text: 'Слишком тяжелая модель для текущей конфигурации'
-            };
-        }
-    }
+    const compatibility = computeHardwareCompatibility(approxVramGB, hwSpecs);
 
     return {
         class: modelClass,
@@ -935,17 +1000,25 @@ function getModelSortScore(m) {
     let month = 1;
 
     // 1. Определение эпохи / года выпуска
-    if (relDate.includes('2024') || name.includes('qwen2.5') || gen === '2.5') {
+    if (relDate.includes('2023') || name.includes('mixtral')) {
+        year = 2023;
+        month = 12;
+    } else if (relDate.includes('2024') || name.includes('qwen2.5') || gen === '2.5' || name.includes('llama3') || name.includes('mistral') || name.includes('gemma2')) {
         year = 2024;
-        month = relDate.includes('сентябр') ? 9 : 5;
+        if (relDate.includes('май')) month = 5;
+        else if (relDate.includes('июн')) month = 6;
+        else if (relDate.includes('июл')) month = 7;
+        else if (relDate.includes('сентябр')) month = 9;
+        else month = 8;
     } else if (relDate.includes('2026') || name.includes('qwen3.5') || name.includes('qwen3.6') || name.includes('qwen3.8') || gen.startsWith('3.5') || gen.startsWith('3.6') || gen.startsWith('3.8')) {
         year = 2026;
         if (relDate.includes('август') || name.includes('3.8')) month = 8;
         else if (relDate.includes('сентябр') || name.includes('3.5') || name.includes('3.6')) month = 9;
         else month = 10;
-    } else if (relDate.includes('2025') || name.includes('qwen3') || gen === '3.0') {
+    } else if (relDate.includes('2025') || name.includes('qwen3') || name.includes('deepseek-r1') || name.includes('dolphin3') || gen === '3.0') {
         year = 2025;
-        if (relDate.includes('май')) month = 5;
+        if (name.includes('deepseek-r1') || relDate.includes('январ')) month = 1;
+        else if (relDate.includes('май')) month = 5;
         else if (relDate.includes('сентябр')) month = 9;
         else if (relDate.includes('октябр')) month = 10;
         else month = 6;
@@ -953,11 +1026,15 @@ function getModelSortScore(m) {
 
     // 2. Параметры модели (в миллионах) для сортировки от меньших к большим внутри одного поколения
     let paramScore = 0;
-    const match = name.match(/(\d+(?:\.\d+)?)\s*b/i);
-    if (match) {
-        paramScore = parseFloat(match[1]) * 1000;
-    } else if (m.size) {
-        paramScore = m.size / (1024 * 1024);
+    if (name.includes('8x7b')) {
+        paramScore = 56000;
+    } else {
+        const match = name.match(/(\d+(?:\.\d+)?)\s*b/i);
+        if (match) {
+            paramScore = parseFloat(match[1]) * 1000;
+        } else if (m.size) {
+            paramScore = m.size / (1024 * 1024);
+        }
     }
 
     return (year * 10000000) + (month * 100000) + paramScore;
@@ -1513,17 +1590,230 @@ function buildQwenCatalog(installedModels = [], hwSpecs = null) {
             predecessor: null,
             successor: null,
             parameterAlert: '🟡 Требует частичного оффлоада в ваши 16 GB системной RAM.'
+        },
+        {
+            tag: 'dolphin3:8b',
+            displayName: 'Dolphin 3.0 Llama 3.1 8B',
+            family: 'dolphin',
+            modelClass: 'uncensored',
+            className: '🔓 Без цензуры (Abliterated)',
+            tier: 'flagship',
+            tierName: '⚡ Флагман',
+            generation: 'Dolphin 3.0',
+            releaseDate: '2025',
+            params: '8B',
+            sizeApprox: '4.9 GB',
+            description: 'Актуальная версия Dolphin 3.0 на базе Llama 3.1 без цензуры, нотаций и отказов. Отлично подходит для кода, агента и системных вопросов.',
+            lineage: 'Llama 3.1 8B ➔ Dolphin 3.0 (8B)',
+            predecessor: 'dolphin-llama3:8b',
+            successor: null,
+            parameterAlert: '🟢 100% помещается в 8 GB VRAM (4.9 GB), поддерживает контекст до 32K.'
+        },
+        {
+            tag: 'dolphin-mistral:7b',
+            displayName: 'Dolphin Mistral 7B',
+            family: 'dolphin-mistral',
+            modelClass: 'uncensored',
+            className: '🔓 Без цензуры (Abliterated)',
+            tier: 'flagship',
+            tierName: '⚡ Флагман',
+            generation: 'Dolphin Mistral',
+            releaseDate: '2024',
+            params: '7B',
+            sizeApprox: '4.1 GB',
+            description: 'Классическая незацензуренная модель на базе Mistral 7B (v2.8): лёгкая, быстрая и отзывчивая без встроенной морали.',
+            lineage: 'Mistral 7B ➔ Dolphin Mistral 7B',
+            predecessor: null,
+            successor: null,
+            parameterAlert: '🟢 Всего 4.1 GB — оставляет почти половину VRAM свободными.'
+        },
+        {
+            tag: 'CognitiveComputations/dolphin-2.9.2-qwen2-7b:Q4_K_M',
+            displayName: 'Dolphin 2.9.2 Qwen2 7B',
+            family: 'dolphin-qwen',
+            modelClass: 'uncensored',
+            className: '🔓 Без цензуры (Abliterated)',
+            tier: 'flagship',
+            tierName: '⚡ Флагман',
+            generation: 'Dolphin Qwen',
+            releaseDate: '2024',
+            params: '7.6B',
+            sizeApprox: '4.7 GB',
+            description: 'Сборка Dolphin на архитектуре Qwen2 7B от CognitiveComputations: сочетает качество Qwen в коде и русском языке со свободой ответов Dolphin.',
+            lineage: 'Qwen2 7B ➔ Dolphin 2.9.2 Qwen2 7B',
+            predecessor: null,
+            successor: null,
+            parameterAlert: '🟢 Квантование Q4_K_M (4.7 GB) полностью помещается в 8 GB VRAM.'
+        },
+
+        // ===== 🌐 OPEN-WEIGHTS: СТОРОННИЕ СЕМЕЙСТВА =====
+        {
+            tag: 'llama3.2:3b',
+            displayName: 'Meta Llama 3.2 3B',
+            family: 'llama3.2',
+            modelClass: 'openweights',
+            className: '🌐 Open-Weights',
+            tier: 'balanced',
+            tierName: '🚀 Сбалансированный',
+            generation: 'Llama 3.2',
+            releaseDate: 'Сентябрь 2024',
+            params: '3.2B',
+            sizeApprox: '2.0 GB',
+            description: 'Компактная мультиязычная модель от Meta для быстрых повседневных задач и инструкций.',
+            lineage: 'Meta Llama 3.2 (3B)',
+            predecessor: null,
+            successor: 'llama3.1:8b',
+            parameterAlert: '⚡ Очень быстрая: весит всего 2.0 GB, летает на 8 GB VRAM.'
+        },
+        {
+            tag: 'llama3.1:8b',
+            displayName: 'Meta Llama 3.1 8B',
+            family: 'llama3.1',
+            modelClass: 'openweights',
+            className: '🌐 Open-Weights',
+            tier: 'flagship',
+            tierName: '⚡ Флагман',
+            generation: 'Llama 3.1',
+            releaseDate: 'Июль 2024',
+            params: '8.0B',
+            sizeApprox: '4.9 GB',
+            description: 'Мировой стандарт open-weights моделей от Meta: стабильное следование инструкциям, длинный контекст и tool-calling.',
+            lineage: 'Meta Llama 3.1 (8B)',
+            predecessor: 'llama3.2:3b',
+            successor: null,
+            parameterAlert: '🟢 100% в 8 GB VRAM (4.9 GB).'
+        },
+        {
+            tag: 'deepseek-r1:7b',
+            displayName: 'DeepSeek-R1 Distill Qwen 7B',
+            family: 'deepseek-r1',
+            modelClass: 'openweights',
+            className: '🌐 Open-Weights',
+            tier: 'flagship',
+            tierName: '⚡ Флагман',
+            generation: 'DeepSeek-R1',
+            releaseDate: 'Январь 2025',
+            params: '7.6B',
+            sizeApprox: '4.7 GB',
+            description: 'Дистилляция DeepSeek-R1 на базе Qwen-7B с пошаговыми рассуждениями (<think>): сильна в математике, логике и алгоритмах.',
+            lineage: 'DeepSeek-R1 ➔ Distill Qwen 7B',
+            predecessor: null,
+            successor: 'deepseek-r1:8b',
+            parameterAlert: '🟢 Оптимальна под 8 GB VRAM (4.7 GB) с глубоким chain-of-thought.'
+        },
+        {
+            tag: 'deepseek-r1:8b',
+            displayName: 'DeepSeek-R1 Distill Llama 8B',
+            family: 'deepseek-r1',
+            modelClass: 'openweights',
+            className: '🌐 Open-Weights',
+            tier: 'flagship',
+            tierName: '⚡ Флагман',
+            generation: 'DeepSeek-R1',
+            releaseDate: 'Январь 2025',
+            params: '8.0B',
+            sizeApprox: '5.2 GB',
+            description: 'Версия DeepSeek-R1 Distill 8B на базе Llama 3.1: открытый флагман логических рассуждений и анализа кода.',
+            lineage: 'DeepSeek-R1 Distill 7B ➔ 8B',
+            predecessor: 'deepseek-r1:7b',
+            successor: 'deepseek-r1:14b',
+            parameterAlert: '🟢 5.2 GB — полностью умещается в 8 GB VRAM RX 6600.'
+        },
+        {
+            tag: 'deepseek-r1:14b',
+            displayName: 'DeepSeek-R1 Distill Qwen 14B',
+            family: 'deepseek-r1',
+            modelClass: 'openweights',
+            className: '🌐 Open-Weights',
+            tier: 'expert',
+            tierName: '🧠 Продвинутый (14B)',
+            generation: 'DeepSeek-R1',
+            releaseDate: 'Январь 2025',
+            params: '14.8B',
+            sizeApprox: '9.0 GB',
+            description: 'Старшая дистиллированная reasoning-модель DeepSeek-R1 14B для сложного анализа, математики и архитектуры кода.',
+            lineage: 'DeepSeek-R1 Distill 8B ➔ 14B',
+            predecessor: 'deepseek-r1:8b',
+            successor: null,
+            parameterAlert: '🟡 Вес 9.0 GB — требует частичной выгрузки в 16 GB системной RAM.'
+        },
+        {
+            tag: 'mistral:7b',
+            displayName: 'Mistral 7B v0.3',
+            family: 'mistral',
+            modelClass: 'openweights',
+            className: '🌐 Open-Weights',
+            tier: 'flagship',
+            tierName: '⚡ Флагман',
+            generation: 'Mistral v0.3',
+            releaseDate: 'Май 2024',
+            params: '7.2B',
+            sizeApprox: '4.4 GB',
+            description: 'Быстрая европейская open-weights модель от Mistral AI (v0.3): расширенный словарь, поддержка function calling и высокая скорость.',
+            lineage: 'Mistral 7B v0.3',
+            predecessor: null,
+            successor: 'mixtral:8x7b',
+            parameterAlert: '🟢 4.4 GB — уверенно работает полностью в VRAM.'
+        },
+        {
+            tag: 'mixtral:8x7b',
+            displayName: 'Mixtral 8x7B MoE',
+            family: 'mixtral',
+            modelClass: 'openweights',
+            className: '🌐 Open-Weights',
+            tier: 'expert',
+            tierName: '🧠 MoE (8x7B)',
+            generation: 'Mixtral MoE',
+            releaseDate: 'Декабрь 2023',
+            params: '46.7B MoE',
+            sizeApprox: '26 GB',
+            description: 'Mixture-of-Experts модель от Mistral AI (8 экспертов по 7B). В каталоге для полноты линейки семейства Mistral.',
+            lineage: 'Mistral 7B ➔ Mixtral 8x7B MoE',
+            predecessor: 'mistral:7b',
+            successor: null,
+            parameterAlert: '🔴 Весит ~26 GB: слишком велика для конфигурации 8 GB VRAM + 16 GB RAM.'
+        },
+        {
+            tag: 'gemma2:2b',
+            displayName: 'Google Gemma 2 2B',
+            family: 'gemma2',
+            modelClass: 'openweights',
+            className: '🌐 Open-Weights',
+            tier: 'light',
+            tierName: '🌱 Ультралегкий',
+            generation: 'Gemma 2',
+            releaseDate: 'Июль 2024',
+            params: '2.6B',
+            sizeApprox: '1.6 GB',
+            description: 'Компактная и очень качественная для своего размера модель от Google с контекстом 8K.',
+            lineage: 'Google Gemma 2 (2B)',
+            predecessor: null,
+            successor: 'gemma2:9b',
+            parameterAlert: '⚡ Занимает всего 1.6 GB VRAM, нативный контекст 8K.'
+        },
+        {
+            tag: 'gemma2:9b',
+            displayName: 'Google Gemma 2 9B',
+            family: 'gemma2',
+            modelClass: 'openweights',
+            className: '🌐 Open-Weights',
+            tier: 'flagship',
+            tierName: '⚡ Флагман',
+            generation: 'Gemma 2',
+            releaseDate: 'Июнь 2024',
+            params: '9.2B',
+            sizeApprox: '5.4 GB',
+            description: 'Открытая модель от Google: сильна в формулировке текстов, объяснениях и переводах. Контекстное окно 8K.',
+            lineage: 'Google Gemma 2 (2B ➔ 9B)',
+            predecessor: 'gemma2:2b',
+            successor: null,
+            parameterAlert: '🟢 5.4 GB — помещается в 8 GB VRAM (контекст 8K).'
         }
     ];
 
     return catalogRaw.map(item => {
         const isInstalled = installedNames.some(n => n === item.tag.toLowerCase() || n.startsWith(item.tag.toLowerCase() + ':'));
-        let compat = { badge: '🟢 100% GPU', color: '#2ea043', text: 'Полностью в VRAM (быстрая генерация)' };
-        if (item.tier === 'expert') {
-            compat = { badge: '🟡 RAM Offload', color: '#d29922', text: 'Требует 16 GB системной RAM' };
-        } else if (item.tier === 'flagship' && item.sizeApprox.includes('9.')) {
-            compat = { badge: '🟡 RAM Offload', color: '#d29922', text: 'Частичная выгрузка в RAM' };
-        }
+        const compat = computeHardwareCompatibility(parseSizeGBFromLabel(item.sizeApprox), hwSpecs);
 
         return {
             ...item,
@@ -1755,10 +2045,10 @@ function callOllamaChat(model, messages, options = {}, onReqCreated = null) {
             if (!isDone) reject(err);
         });
 
-        req.setTimeout(60000, () => {
+        req.setTimeout(120000, () => {
             if (!isDone) {
                 req.destroy();
-                reject(new Error('Таймаут запроса к Ollama (60с)'));
+                reject(new Error('Таймаут запроса к Ollama (120с)'));
             }
         });
 
@@ -1843,12 +2133,14 @@ function parseReActOutput(text) {
         thought = parts[0].trim();
     }
 
-    // Извлечение действия Action:
-    const actionMatch = cleanText.match(/Action:\s*([a-zA-Z_]+)(?:\s*\(?["']?([\s\S]*?)["']?\s*\)?)?/i);
+    // Извлечение действия Action: (имя + остаток строки как параметр)
+    const actionMatch = cleanText.match(/Action:\s*([a-zA-Z_]+)[ \t]*([^\n]*)/i);
     if (actionMatch) {
         action = actionMatch[1].toLowerCase().trim();
-        actionParam = (actionMatch[2] || '').trim();
-        actionParam = actionParam.replace(/^["'\(]+|["'\)]+$/g, '').trim();
+        let rawParam = (actionMatch[2] || '').trim();
+        rawParam = rawParam.replace(/^\(\s*/, '').replace(/\s*\)\s*\.?$/, '').trim();
+        rawParam = rawParam.replace(/^["'`«]+|["'`»]+$/g, '').trim();
+        actionParam = rawParam;
     }
 
     if (!action || action === 'none') {
@@ -1880,6 +2172,127 @@ function parseReActOutput(text) {
     }
 
     return { thought, action, actionParam };
+}
+
+// ==========================================
+// Файловые инструменты агента (только чтение, песочница корней)
+// ==========================================
+
+const os = require('os');
+
+// Разрешённые корневые папки. Можно переопределить: AGENT_FS_ROOTS="C:\Projects;D:\Docs"
+const AGENT_FS_ROOTS = (process.env.AGENT_FS_ROOTS
+    ? process.env.AGENT_FS_ROOTS.split(';')
+    : [path.join(os.homedir(), 'Desktop')]
+).map(p => p.trim()).filter(Boolean).map(p => path.resolve(p));
+
+const AGENT_FS_DENY_FILE = /(^|[\\/])(\.env(\..*)?|id_rsa[^\\/]*|id_ed25519[^\\/]*|[^\\/]*\.(pem|key|pfx|p12|kdbx|ppk)|\.npmrc|\.git-credentials)$/i;
+const AGENT_FS_HEAVY_DIRS = new Set(['node_modules', '.git', '__pycache__', '.venv', 'venv', 'dist', 'build', '.next']);
+const AGENT_FS_MAX_LIST = 120;
+const AGENT_FS_MAX_READ_BYTES = 256 * 1024;
+
+function agentIsInsideRoot(realPath) {
+    const target = realPath.toLowerCase();
+    return AGENT_FS_ROOTS.some(root => {
+        const r = root.toLowerCase();
+        return target === r || target.startsWith(r.endsWith(path.sep) ? r : r + path.sep);
+    });
+}
+
+// Возвращает { ok:true, path } либо { ok:false, error }
+function resolveAgentPath(inputPath) {
+    if (!inputPath) return { ok: false, error: 'Путь не указан.' };
+    let p = String(inputPath).trim().replace(/^["'`]+|["'`]+$/g, '');
+    if (!path.isAbsolute(p)) {
+        p = path.join(AGENT_FS_ROOTS[0], p);
+    }
+    p = path.resolve(p);
+    let real;
+    try {
+        real = fs.realpathSync(p);
+    } catch (e) {
+        return { ok: false, error: `Путь не существует: ${p}` };
+    }
+    if (!agentIsInsideRoot(real)) {
+        return { ok: false, error: `Доступ запрещён: путь вне разрешённых папок (${AGENT_FS_ROOTS.join('; ')}).` };
+    }
+    return { ok: true, path: real };
+}
+
+function agentListDir(inputPath) {
+    const r = resolveAgentPath(inputPath);
+    if (!r.ok) return { ok: false, error: r.error };
+    let stat;
+    try { stat = fs.statSync(r.path); } catch (e) { return { ok: false, error: e.message }; }
+    if (!stat.isDirectory()) return { ok: false, error: `Это файл, а не папка: ${r.path}. Используй read_file.` };
+
+    let entries;
+    try { entries = fs.readdirSync(r.path, { withFileTypes: true }); } catch (e) { return { ok: false, error: e.message }; }
+
+    entries.sort((a, b) => (b.isDirectory() - a.isDirectory()) || a.name.localeCompare(b.name));
+    const total = entries.length;
+    const lines = entries.slice(0, AGENT_FS_MAX_LIST).map(e => {
+        if (e.isDirectory()) {
+            return `[папка] ${e.name}${AGENT_FS_HEAVY_DIRS.has(e.name) ? '  (служебная, пропускай)' : ''}`;
+        }
+        let size = '';
+        try { size = ` (${Math.max(1, Math.round(fs.statSync(path.join(r.path, e.name)).size / 1024))} KB)`; } catch (_) {}
+        return `[файл]  ${e.name}${size}`;
+    });
+    if (total > AGENT_FS_MAX_LIST) lines.push(`... и ещё ${total - AGENT_FS_MAX_LIST} элементов`);
+    return { ok: true, path: r.path, count: total, text: lines.join('\n') || '(папка пуста)' };
+}
+
+function agentReadFile(inputPath, maxChars = 4000) {
+    const r = resolveAgentPath(inputPath);
+    if (!r.ok) return { ok: false, error: r.error };
+    if (AGENT_FS_DENY_FILE.test(r.path)) {
+        return { ok: false, error: 'Доступ запрещён: файл содержит секреты (ключи/пароли).' };
+    }
+    let stat;
+    try { stat = fs.statSync(r.path); } catch (e) { return { ok: false, error: e.message }; }
+    if (stat.isDirectory()) return { ok: false, error: `Это папка: ${r.path}. Используй list_dir.` };
+
+    let buf;
+    try {
+        const fd = fs.openSync(r.path, 'r');
+        const toRead = Math.min(stat.size, AGENT_FS_MAX_READ_BYTES);
+        buf = Buffer.alloc(toRead);
+        fs.readSync(fd, buf, 0, toRead, 0);
+        fs.closeSync(fd);
+    } catch (e) {
+        return { ok: false, error: e.message };
+    }
+    if (buf.subarray(0, 4096).includes(0)) {
+        return { ok: false, error: 'Бинарный файл, прочитать как текст нельзя.' };
+    }
+    let text = buf.toString('utf8');
+    const fullLen = text.length;
+    let truncated = false;
+    if (text.length > maxChars) { text = text.substring(0, maxChars); truncated = true; }
+    return {
+        ok: true,
+        path: r.path,
+        size: stat.size,
+        chars: text.length,
+        truncated: truncated || stat.size > AGENT_FS_MAX_READ_BYTES,
+        text: text + (truncated ? `\n... [файл обрезан: показано ${text.length} из ${fullLen}+ символов]` : '')
+    };
+}
+
+// Находит в запросе пользователя путь Windows (в т.ч. с пробелами) и возвращает существующий вариант
+function extractLocalPathFromQuery(query) {
+    const m = String(query).match(/[A-Za-z]:\\[^\r\n"<>|?*]*/);
+    if (!m) return null;
+    let candidate = m[0].replace(/[\s.,;:!?)\]]+$/, '');
+    // Постепенно отбрасываем слова с конца, пока путь не найдётся ("revers win -7 пожалуйста" -> "revers win -7")
+    while (candidate.length > 3) {
+        if (fs.existsSync(candidate)) return candidate;
+        const cut = candidate.lastIndexOf(' ');
+        if (cut < 3) break;
+        candidate = candidate.substring(0, cut).replace(/[\s.,;:!?)\]]+$/, '');
+    }
+    return fs.existsSync(candidate) ? candidate : m[0].trim();
 }
 
 const server = http.createServer((req, res) => {
@@ -2223,7 +2636,10 @@ const server = http.createServer((req, res) => {
             let chatId = body.chat_id || null;
             const model = body.model || 'qwen3.5:9b';
             const query = String(body.query).trim();
-            const maxSteps = Math.min(Math.max(parseInt(body.max_steps) || 4, 2), 6);
+            const requestedPersonaId = body.persona_id || null;
+            const requestedPersonaPrompt = body.persona_prompt ? String(body.persona_prompt).trim() : '';
+            const requestedSteps = Math.min(Math.max(parseInt(body.max_steps) || 4, 2), 6);
+            const maxSteps = extractLocalPathFromQuery(query) ? 6 : requestedSteps;
             const today = new Date().toISOString().split('T')[0];
 
             let currentOllamaReq = null;
@@ -2274,23 +2690,28 @@ const server = http.createServer((req, res) => {
 
             writeLog('INFO', `[Agent] Запуск Deep Research [${model}] для "${query.substring(0, 50)}" (макс. шагов: ${maxSteps})...`);
 
-            const systemPrompt = `Ты — автономный исследовательский AI-агент ReAct (Reason + Act).
-Твоя цель — глубоко изучить вопрос пользователя, собрать проверенные актуальные факты из интернета и подготовить материал для исчерпывающего аналитического отчета.
+            const systemPrompt = `Ты — автономный исследовательский AI-агент ReAct (Reason + Act) внутри приложения Qwen AI Studio, запущенного локально на ПК пользователя.
+Твоя цель — глубоко изучить вопрос пользователя (сведения из интернета и/или файлы проекта на компьютере) и подготовить материал для исчерпывающего аналитического отчета.
 Сегодняшняя дата: ${today}.
 
 ТЕБЕ ДОСТУПНЫ СЛЕДУЮЩИЕ ДЕЙСТВИЯ:
-1. Action: search("поисковый запрос") — выполняет поиск в DuckDuckGo и возвращает заголовки, краткие выдержки и ссылки.
-2. Action: fetch("URL") — загружает и очищает текстовое содержимое конкретной веб-страницы по найденному URL.
-3. Action: finish — завершает сбор информации, когда собрано достаточно фактов для развернутого ответа.
+1. Action: search("поисковый запрос") — поиск в интернете (DuckDuckGo): заголовки, выдержки и ссылки.
+2. Action: fetch("URL") — загружает и очищает текст конкретной веб-страницы.
+3. Action: list_dir("C:/путь/к/папке") — показывает содержимое папки на ПК пользователя (только чтение).
+4. Action: read_file("C:/путь/к/файлу.txt") — читает текстовый файл (README, исходный код, конфиги). Только чтение.
+5. Action: finish — завершает сбор информации, когда собрано достаточно фактов.
+
+Разрешённые папки для list_dir и read_file: ${AGENT_FS_ROOTS.join('; ')}. Остальные закрыты.
 
 ПРАВИЛА И СТРОГИЙ ФОРМАТ КАЖДОГО ОТВЕТА:
 - Ты должен выводить СТРОГО:
-Thought: [Твои рассуждения: что уже известно, какого конкретного факта не хватает, какой шаг сделать сейчас]
-Action: search("...") ИЛИ Action: fetch("...") ИЛИ Action: finish
-- За один шаг вызывай строго ОДНО действие.
-- Запрос для search пиши кратко и по существу на том языке, на котором больше шансов найти информацию.
-- Не выдумывай факты. Если на шаге 1 получил список ссылок, на шаге 2 изучи наиболее полезную через fetch("URL") или сделай уточняющий поиск.
-- Если у тебя уже есть полные данные, не затягивай — пиши Action: finish.
+Thought: [Твои рассуждения: что уже известно, чего не хватает, какой шаг сделать сейчас]
+Action: search("...") ИЛИ fetch("...") ИЛИ list_dir("...") ИЛИ read_file("...") ИЛИ finish
+- За один шаг вызывай строго ОДНО действие. Параметр пиши полностью на одной строке.
+- Для исследования проекта на ПК: сначала list_dir корня, затем прочитай README/документацию, затем главные файлы (package.json, точки входа, конфиги). Не читай node_modules, .git и бинарные файлы.
+- Для вопросов про интернет используй search, затем fetch по самой полезной ссылке.
+- Не выдумывай факты и содержимое файлов. Используй только то, что получил в Observation.
+- Если данных уже достаточно, не затягивай — пиши Action: finish.
 - Все мысли (Thought) пиши на русском языке.`;
 
             const agentMessages = [
@@ -2304,7 +2725,58 @@ Action: search("...") ИЛИ Action: fetch("...") ИЛИ Action: finish
             let totalPromptTokens = 0;
             let totalEvalTokens = 0;
 
-            for (let step = 1; step <= maxSteps; step++) {
+            // Файловый режим: в запросе пользователя указан локальный путь
+            const localPathHint = extractLocalPathFromQuery(query);
+            const fileMode = !!localPathHint;
+            const stepCtx = fileMode ? 12288 : 8192;
+
+            // Выполнение файловых действий (list_dir / read_file). Возвращает текст наблюдения и событие для UI
+            const runFsAction = (act, param) => {
+                const res = act === 'list_dir' ? agentListDir(param) : agentReadFile(param, 4000);
+                if (!res.ok) {
+                    return {
+                        observationText: `Ошибка: ${res.error}`,
+                        event: { type: 'observation', action: act, path: param, error: res.error }
+                    };
+                }
+                const srcId = collectedSources.length + 1;
+                collectedSources.push({
+                    id: srcId,
+                    kind: 'file',
+                    title: (act === 'list_dir' ? 'Папка: ' : 'Файл: ') + res.path,
+                    url: '',
+                    snippet: res.text.substring(0, 250),
+                    pageContent: res.text
+                });
+                if (act === 'list_dir') {
+                    return {
+                        observationText: `Содержимое папки ${res.path} (${res.count} элементов):\n${res.text}`,
+                        event: { type: 'observation', action: act, path: res.path, entries: res.count }
+                    };
+                }
+                return {
+                    observationText: `Содержимое файла ${res.path}${res.truncated ? ' (обрезано)' : ''}:\n${res.text}`,
+                    event: { type: 'observation', action: act, path: res.path, contentLength: res.chars }
+                };
+            };
+
+            // Детерминированный шаг 1: сразу показываем модели то, что лежит по указанному пути
+            let startStep = 1;
+            if (fileMode) {
+                const isDir = (() => { try { return fs.statSync(localPathHint).isDirectory(); } catch (e) { return false; } })();
+                const preAction = isDir ? 'list_dir' : 'read_file';
+                const preThought = `Пользователь указал локальный путь «${localPathHint}». Сначала изучу ${isDir ? 'структуру папки' : 'файл'}.`;
+                writeLog('INFO', `[Agent] Файловый режим: ${preAction}("${localPathHint}")`);
+                sendEvent({ type: 'step', step: 1, totalSteps: maxSteps, thought: preThought, action: preAction, actionParam: localPathHint });
+                const pre = runFsAction(preAction, localPathHint);
+                sendEvent({ ...pre.event, step: 1 });
+                researchTrace += `\n[Шаг 1]\n💭 Мысль: ${preThought}\n⚙️ Действие: ${preAction} ("${localPathHint}")\n📄 Наблюдение: ${pre.observationText.substring(0, 300)}...\n`;
+                agentMessages.push({ role: 'assistant', content: `Thought: ${preThought}\nAction: ${preAction}("${localPathHint}")` });
+                agentMessages.push({ role: 'user', content: `Observation: ${pre.observationText}\nСледующий шаг:` });
+                startStep = 2;
+            }
+
+            for (let step = startStep; step <= maxSteps; step++) {
                 if (isAborted) break;
                 writeLog('INFO', `[Agent] Шаг ${step}/${maxSteps} рассуждения модели...`);
 
@@ -2312,7 +2784,8 @@ Action: search("...") ИЛИ Action: fetch("...") ИЛИ Action: finish
                 try {
                     const ollamaRes = await callOllamaChat(model, agentMessages, {
                         temperature: 0.2,
-                        num_ctx: 8192,
+                        num_ctx: stepCtx,
+
                         stop: ['\nObservation:', 'Observation:']
                     }, (r) => { currentOllamaReq = r; });
 
@@ -2428,8 +2901,13 @@ Action: search("...") ИЛИ Action: fetch("...") ИЛИ Action: finish
                         observationText = `Ошибка загрузки страницы: ${fetchErr.message}`;
                         sendEvent({ type: 'observation', step: step, action: 'fetch', error: fetchErr.message });
                     }
+                } else if (action === 'list_dir' || action === 'read_file') {
+                    writeLog('INFO', `[Agent] Шаг ${step}: ${action}("${actionParam}")`);
+                    const fsRes = runFsAction(action, actionParam);
+                    observationText = fsRes.observationText;
+                    sendEvent({ ...fsRes.event, step: step });
                 } else {
-                    observationText = `Неизвестное действие "${action}". Используй search("запрос"), fetch("URL") или finish.`;
+                    observationText = `Неизвестное действие "${action}". Используй search("запрос"), fetch("URL"), list_dir("путь"), read_file("путь") или finish.`;
                 }
 
                 researchTrace += `📄 Наблюдение: ${observationText.substring(0, 300)}...\n`;
@@ -2448,20 +2926,40 @@ Action: search("...") ИЛИ Action: fetch("...") ИЛИ Action: finish
 
             const materialsText = collectedSources.map((s, idx) => {
                 const content = s.pageContent || s.snippet || '';
-                return `[${idx + 1}] "${s.title}" (${s.url})\nФрагмент:\n${content}`;
+                const loc = s.kind === 'file' ? '' : ` (${s.url})`;
+                return `[${idx + 1}] "${s.title}"${loc}\nФрагмент:\n${content}`;
             }).join('\n\n');
+
+            const noMaterialsNote = fileMode
+                ? 'Файлы по указанному пути прочитать не удалось. Честно сообщи об этом пользователю и НЕ выдумывай содержимое проекта.'
+                : 'Прямых ссылок не найдено, используй свои экспертные знания.';
+
+            let activePersonaNote = '';
+            try {
+                const resolvedPersonaText = requestedPersonaPrompt || (() => {
+                    const chatRow = chatId ? db.getChatById(chatId) : null;
+                    const pid = requestedPersonaId || (chatRow && chatRow.persona_id) || db.getSetting('active_persona_id', 'default');
+                    const p = pid && pid !== 'default' ? db.getPersonaById(pid) : null;
+                    return p ? `${p.name}: ${p.system_prompt}` : '';
+                })();
+                if (resolvedPersonaText) {
+                    activePersonaNote = `\nУЧТИ СТИЛЬ И РОЛЬ ВЫБРАННОЙ ПЕРСОНЫ:\n${resolvedPersonaText}\n`;
+                }
+            } catch (e) {}
 
             const finalPrompt = `Ты — ведущий эксперт-аналитик и технический исследователь.
 Твоя задача — составить подробный, исчерпывающий и структурированный аналитический отчет по запросу: "${query}".
-
+${activePersonaNote}
 СОБРАННЫЕ В ХОДЕ АВТОНОМНОГО ИССЛЕДОВАНИЯ МАТЕРИАЛЫ (Дата: ${today}):
-${materialsText || 'Прямых ссылок не найдено, используй свои экспертные знания.'}
+${materialsText || noMaterialsNote}
 
 ОБЯЗАТЕЛЬНЫЕ ТРЕБОВАНИЯ К ОТЧЕТУ:
 1. Пиши на русском языке с четкой структурой (краткое резюме / суть, подробный разбор по пунктам, сравнительные аспекты, выводы и рекомендации).
 2. Обязательно делай ссылки на факты из материалов выше с помощью сносок [1], [2] и т.д.
 3. Не лей воду: давай точные цифры, технические характеристики, даты и аргументы.
-4. Ответ должен быть полным, чтобы пользователю не требовалось искать дополнительные данные.`;
+4. Если изучались файлы или папки проекта: опиши назначение проекта, структуру, ключевые файлы и технологии, но ТОЛЬКО на основе реально прочитанного содержимого. Если что-то не прочитано — так и скажи.
+5. Ответ должен быть полным, чтобы пользователю не требовалось искать дополнительные данные.`;
+
 
             const finalMessages = [
                 { role: 'system', content: finalPrompt },
@@ -2672,7 +3170,20 @@ ${materialsText || 'Прямых ссылок не найдено, исполь�
             'qwen2.5:3b': 32768,
             'qwen2.5:1.5b': 32768,
             'qwen2.5:0.5b': 32768,
-            'qwen2.5-coder:7b': 32768
+            'qwen2.5-coder:7b': 32768,
+            'dolphin3:8b': 32768,
+            'dolphin-mistral:7b': 32768,
+            'dolphin-llama3:8b': 8192,
+            'CognitiveComputations/dolphin-2.9.2-qwen2-7b:Q4_K_M': 32768,
+            'llama3.2:3b': 32768,
+            'llama3.1:8b': 32768,
+            'deepseek-r1:7b': 32768,
+            'deepseek-r1:8b': 32768,
+            'deepseek-r1:14b': 32768,
+            'mistral:7b': 32768,
+            'mixtral:8x7b': 32768,
+            'gemma2:2b': 8192,
+            'gemma2:9b': 8192
         };
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({
@@ -2682,9 +3193,106 @@ ${materialsText || 'Прямых ссылок не найдено, исполь�
             limits: limitsMap,
             reasons: {
                 vision: 'Мультимодальные модели (Vision): лимит 16K оптимизирован для видеопамяти 8 GB VRAM, исключая OOM при кодировании картинок.',
-                chat: 'Текстовые модели (Chat): полноценный лимит 32K для максимальной длины диалога на полной скорости GPU.'
+                chat: 'Текстовые модели (Chat): полноценный лимит 32K (8K для Gemma 2 / Llama 3) на полной скорости GPU.'
             }
         }));
+        return;
+    }
+
+    // 10.1 Профили системных инструкций (Personas API)
+    if (req.url === '/api/personas' && req.method === 'GET') {
+        try {
+            const personas = db.getPersonas();
+            const activePersonaId = db.getSetting('active_persona_id', 'default') || 'default';
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ status: 'ok', personas, activePersonaId }));
+        } catch (err) {
+            writeLog('ERROR', `[DB] Ошибка получения профилей Persona: ${err.message}`);
+            res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ error: err.message }));
+        }
+        return;
+    }
+
+    if (req.url === '/api/personas/active' && req.method === 'POST') {
+        readJsonBody(req, (err, body) => {
+            try {
+                const personaId = body && body.persona_id ? String(body.persona_id).trim() : 'default';
+                const persona = db.getPersonaById(personaId);
+                if (!persona) {
+                    res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ error: 'Профиль не найден' }));
+                    return;
+                }
+                db.setSetting('active_persona_id', personaId);
+                if (body && body.chat_id) {
+                    db.updateChat(body.chat_id, { persona_id: personaId });
+                }
+                writeLog('INFO', `[Persona] Активирован профиль: "${persona.name}" (${persona.id})`);
+                res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ status: 'ok', activePersonaId: personaId, persona }));
+            } catch (activeErr) {
+                res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ error: activeErr.message }));
+            }
+        });
+        return;
+    }
+
+    if (req.url === '/api/personas' && req.method === 'POST') {
+        readJsonBody(req, (err, body) => {
+            try {
+                const created = db.createPersona(body || {});
+                writeLog('INFO', `[Persona] Создан новый профиль: "${created.name}" (${created.id})`);
+                res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ status: 'ok', persona: created }));
+            } catch (createErr) {
+                res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ error: createErr.message }));
+            }
+        });
+        return;
+    }
+
+    if (req.url.match(/^\/api\/personas\/[a-zA-Z0-9_-]+$/) && req.method === 'PATCH') {
+        const personaId = req.url.split('/')[3];
+        readJsonBody(req, (err, body) => {
+            try {
+                const updated = db.updatePersona(personaId, body || {});
+                if (!updated) {
+                    res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ error: 'Профиль не найден' }));
+                    return;
+                }
+                writeLog('INFO', `[Persona] Обновлён профиль: "${updated.name}" (${updated.id})`);
+                res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ status: 'ok', persona: updated }));
+            } catch (updateErr) {
+                res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ error: updateErr.message }));
+            }
+        });
+        return;
+    }
+
+    if (req.url.match(/^\/api\/personas\/[a-zA-Z0-9_-]+$/) && req.method === 'DELETE') {
+        const personaId = req.url.split('/')[3];
+        try {
+            const result = db.deletePersona(personaId);
+            if (!result.deleted) {
+                const code = result.reason === 'builtin' ? 400 : 404;
+                const msg = result.reason === 'builtin' ? 'Встроенные профили нельзя удалять (создайте копию или свой профиль)' : 'Профиль не найден';
+                res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ error: msg }));
+                return;
+            }
+            writeLog('INFO', `[Persona] Удалён профиль ${personaId}`);
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ status: 'ok', deleted: true, activePersonaId: db.getSetting('active_persona_id', 'default') }));
+        } catch (delErr) {
+            res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ error: delErr.message }));
+        }
         return;
     }
 
@@ -2713,7 +3321,8 @@ ${materialsText || 'Прямых ссылок не найдено, исполь�
             try {
                 const title = (body && body.title) ? String(body.title).trim() : 'Новый диалог';
                 const model = (body && body.model) ? String(body.model).trim() : 'qwen3.5:9b';
-                const chat = db.createChat(title, model);
+                const personaId = (body && body.persona_id) ? String(body.persona_id).trim() : null;
+                const chat = db.createChat(title, model, personaId);
                 writeLog('INFO', `[DB] Создан новый диалог: "${chat.title}" (${chat.id})`);
                 res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
                 res.end(JSON.stringify({ status: 'ok', chat }));
@@ -2894,7 +3503,7 @@ ${transcript.substring(0, 14000)}
             if (chatId && lastUserMsg) {
                 try {
                     if (!db.getChatById(chatId)) {
-                        db.createChat('Новый диалог', payload.model || 'qwen3.5:9b');
+                        db.createChat('Новый диалог', payload.model || 'qwen3.5:9b', payload.persona_id || null);
                     }
                     db.addMessage(chatId, 'user', lastUserMsg.content);
                 } catch (dbErr) {
@@ -2902,14 +3511,17 @@ ${transcript.substring(0, 14000)}
                 }
             }
 
-            // Удаляем chat_id перед передачей в Ollama (Ollama его не ожидает)
+            // Удаляем служебные поля перед передачей в Ollama (Ollama их не ожидает)
             delete payload.chat_id;
+            delete payload.persona_id;
 
-            // Обеспечиваем лимит контекстного окна (32K по умолчанию под RX 6600, 16K для мультимодальных Vision моделей)
+            // Обеспечиваем оптимальный лимит контекстного окна под архитектуру модели
             if (!payload.options) payload.options = {};
             if (!payload.options.num_ctx) {
-                const isVision = (payload.model || '').includes('-vl') || (payload.model || '').includes('vl:');
-                payload.options.num_ctx = isVision ? 16384 : 32768;
+                const mLower = (payload.model || '').toLowerCase();
+                const isVision = mLower.includes('-vl') || mLower.includes('vl:');
+                const is8kModel = mLower.startsWith('gemma2') || mLower.startsWith('dolphin-llama3');
+                payload.options.num_ctx = is8kModel ? 8192 : (isVision ? 16384 : 32768);
             }
 
             const ollamaPayload = JSON.stringify(payload);

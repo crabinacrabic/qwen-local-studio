@@ -1,131 +1,145 @@
-# Дорожная карта проекта Qwen AI Studio (Local) 🚀
+# Qwen AI Studio (Local) Project Roadmap 🚀
 
-Автономная локальная среда для работы с открытыми моделями искусственного интеллекта на базе чистого Node.js (Zero-Dependency) и движка Ollama.
-
----
-
-## ✅ Реализовано (Статус: Готово к использованию)
-
-### 1. Ядро системы и стабильность
-- [x] Локальный веб-чат с поддержкой стриминга и блоками рассуждений (`<think>`).
-- [x] Автоматический фоновый запуск службы Ollama при старте сервера с авто-переподключением при `ECONNREFUSED`.
-- [x] Логирование событий в `app.log` с локальными временными метками.
-- [x] Полная автономность и чистота: **0 внешних npm-зависимостей** (нативный Node.js 24).
-- [x] Вспомогательный скрипт `git_push.bat` для мгновенной синхронизации с GitHub.
-
-### 2. Мониторинг железа и Древо эволюции моделей
-- [x] **Нативный сканер системы (Hardware Advisor)** через PowerShell WMI/CIM:
-  - Реальный GPU и видеопамять (AMD RX 6600 8 GB);
-  - Объем оперативной памяти (16 GB RAM);
-  - Свободное место на системном накопителе.
-- [x] **Каталог моделей с классификацией по мощности**:
-  - Классы: `💬 Чат и логика`, `👁️ Зрение (Vision)`, `💻 Кодинг`, `⚡ Эмбеддинги (RAG)`;
-  - Подклассы мощности: `🪶 Ультралегкий`, `🚀 Сбалансированный`, `⚡ Флагман (8 GB GPU)`, `🧠 Экспертный`;
-  - Расчет совместимости с ПК (🟢 *100% GPU*, 🟡 *RAM Offload*, 🔴 *OOM*).
-- [x] **Интерактивное древо преемственности поколений**:
-  - Отображение цепочек версий (Qwen 2.5 ➔ 3.0 ➔ 3.5 ➔ 3.8);
-  - Предупреждения при росте параметров моделей (например, переход с 2B на 4B с повышенным требованием к VRAM);
-  - Автоматическая проверка обновлений в официальной библиотеке Ollama.
-
-### 3. Локальный RAG (База знаний)
-- [x] Собственный векторный движок без внешних библиотек:
-  - Чанкование текста со скользящим перекрытием;
-  - Векторизация чанков через локальные модели эмбеддингов (`qwen3-embedding` / `nomic-embed-text`);
-  - Семантический поиск по косинусному сходству (Cosine Similarity);
-  - Извлечение текста из файлов: `.txt`, `.md`, `.js`, `.py`, `.json`, `.csv`, `.log`, а также Word `.docx` без сторонних npm-пакетов;
-  - Цитаты источников с оценкой релевантности в интерфейсе.
-
-### 4. Выход в живой Интернет (Web Search & Fetch)
-- [x] Встроенный поисковый парсер на базе DuckDuckGo (HTML / Lite) без использования платных API-ключей.
-- [x] Модуль прямого чтения и очистки веб-страниц по URL (фильтрация скриптов, стилей, навигации и рекламы).
-- [x] Автоматическое распознавание поисковых интентов пользователя и внедрение свежих фактов с датой и сносками `[1]`, `[2]`.
-
-### 5. База данных SQLite и управление сессиями (ChatGPT / Claude Style)
-- [x] Встроенная база данных на базе нативного `node:sqlite` в режиме WAL:
-  - Таблицы: `chats`, `messages`, `chat_summaries`, `user_memories`, `settings`.
-  - Надежное сохранение всей истории диалогов при обновлении страницы (`F5`).
-- [x] Мультисессионный боковой сайдбар:
-  - Группировка диалогов по времени: *Сегодня*, *Вчера*, *Предыдущие 7 дней*, *Ранее*;
-  - Создание нового чата (`Ctrl+N`), скрытие/показ панели (`Ctrl+B`);
-  - Живой поиск диалогов по ключевым словам;
-  - Редактирование названия и удаление с подтверждением;
-  - Автоматическая генерация емкого заголовка на основе первого вопроса.
-
-### 6. Контекстный менеджер и Умное сжатие (Magic Compact)
-- [x] **Claude-style шкала контекстного окна**:
-  - Цветовая индикация заполненности: 🟢 Зеленый (<60%), 🟡 Янтарный (60–84%), 🔴 Красный (≥85%);
-  - Точный учет токенов через перехват `prompt_eval_count` и `eval_count` из потока Ollama;
-  - Отображение лимита модели (32K токенов) и оставшегося свободного пространства.
-- [x] **🪄 Волшебная кнопка «Сжать контекст»**:
-  - Быстрое извлечение сути через локальную модель `qwen3:0.6b` (1–2 секунды);
-  - Структурированное резюме (*Цель, Решения, Сущности и пути, Текущий статус*) с экономией свыше 80% токенов;
-  - Отображение карточки сжатого контекста в истории диалога;
-  - Опциональный тумблер **«Авто-сжатие (>85%)»** для предотвращения деградации длинных бесед.
+An autonomous local workspace for open-weights AI models built on pure Node.js (Zero-Dependency) and Ollama.
 
 ---
 
-## 🧭 Планы на следующие этапы (Next Milestones)
+## ✅ Implemented (Status: Ready for Use)
+
+### 1. System Core & Stability
+- [x] Local web chat with streaming responses and reasoning blocks (`<think>`).
+- [x] Automatic background startup of the Ollama service on server boot with auto-reconnect on `ECONNREFUSED`.
+- [x] Event logging to `app.log` with local timestamps.
+- [x] Full autonomy and clean architecture: **0 external npm dependencies** (native Node.js 24).
+- [x] Helper script `git_push.bat` for instant synchronization with GitHub.
+
+### 2. Hardware Monitoring & Model Evolution Tree
+- [x] **Native System Scanner (Hardware Advisor)** via PowerShell WMI/CIM:
+  - Detected GPU and VRAM (AMD RX 6600 8 GB);
+  - System memory capacity (16 GB RAM);
+  - Free space on system drive.
+- [x] **Model Catalog with Capability Classification**:
+  - Categories: `💬 Chat & Logic`, `👁️ Vision`, `💻 Coding`, `⚡ Embeddings (RAG)`;
+  - Compute tiers: `🪶 Ultra-Light`, `🚀 Balanced`, `⚡ Flagship (8 GB GPU)`, `🧠 Expert`;
+  - PC compatibility check (🟢 *100% GPU*, 🟡 *RAM Offload*, 🔴 *OOM*).
+- [x] **Interactive Generation Succession Tree**:
+  - Version lineage display (Qwen 2.5 ➔ 3.0 ➔ 3.5 ➔ 3.8);
+  - Parameter growth warnings (e.g., upgrading from 2B to 4B with higher VRAM requirements);
+  - Automatic update checks against the official Ollama library.
+
+### 3. Local RAG (Knowledge Base)
+- [x] Custom zero-dependency vector engine:
+  - Text chunking with sliding overlap;
+  - Chunk vectorization via local embedding models (`qwen3-embedding` / `nomic-embed-text`);
+  - Semantic retrieval via Cosine Similarity;
+  - Text extraction from `.txt`, `.md`, `.js`, `.py`, `.json`, `.csv`, `.log`, plus Word `.docx` without third-party npm packages;
+  - Source citations with relevance scores in the UI.
+
+### 4. Live Internet Access (Web Search & Fetch)
+- [x] Built-in search parser powered by DuckDuckGo (HTML / Lite) with no paid API keys required.
+- [x] Direct web page reader and cleaner (strips scripts, styles, navigation, and ads).
+- [x] Automatic recognition of search intent and injection of fresh facts with current date and `[1]`, `[2]` footnotes.
+
+### 5. SQLite Database & Session Management (ChatGPT / Claude Style)
+- [x] Embedded database using native `node:sqlite` in WAL mode:
+  - Tables: `chats`, `messages`, `chat_summaries`, `user_memories`, `settings`.
+  - Reliable persistence of full conversation history across page reloads (`F5`).
+- [x] Multi-session sidebar:
+  - Time-grouped conversations: *Today*, *Yesterday*, *Previous 7 Days*, *Earlier*;
+  - New chat shortcut (`Ctrl+N`), sidebar toggle (`Ctrl+B`);
+  - Live keyword search across conversations;
+  - Title editing and deletion with confirmation;
+  - Automatic concise title generation from the first prompt.
+
+### 6. Context Manager & Smart Compaction (Magic Compact)
+- [x] **Claude-style Context Window Bar**:
+  - Color-coded utilization indicator: 🟢 Green (<60%), 🟡 Amber (60–84%), 🔴 Red (≥85%);
+  - Accurate token accounting by capturing `prompt_eval_count` and `eval_count` from the Ollama stream;
+  - Display of model limit (32K tokens) and remaining free context space.
+- [x] **🪄 Magic "Compact Context" Button**:
+  - Fast essence extraction via local `qwen3:0.6b` (1–2 seconds);
+  - Structured summary (*Goal, Decisions, Entities & Paths, Current Status*) saving over 80% of tokens;
+  - Compacted context card rendered inline in conversation history;
+  - Optional **Auto-Compact (>85%)** toggle to prevent degradation in long sessions.
+
+---
+
+## 🧭 Next Milestones
 
 > [!NOTE]
-> **Принцип интерфейса**: Система ориентирована исключительно на **текстовый и визуальный интерфейс** (голосовой ввод и микрофон исключены для сохранения максимальной скорости, чистоты и концентрации на коде и тексте).
+> **Interface Principle**: The system focuses strictly on a **text and visual interface** (voice input and microphone support are excluded to keep speed, clarity, and focus on code and text at maximum).
 
 ---
 
-### Этап 1: Автономный AI-Агент (Deep Research & ReAct Loop) 🕵️
-* [x] **Многошаговый агентный цикл (ReAct: Reason + Act)**:
-  * Реализован нативный агентный цикл на бэкенде `/api/agent/research`: модель формулирует гипотезу (Thought), вызывает инструменты поиска и чтения страниц (Action), анализирует результаты (Observation) и синтезирует итоговый аналитический отчет.
-* [x] **Переключатель режимов генерации в UI**:
-  * Тумблер `🕵️ Deep Research: ВКЛ/ВЫКЛ` в шапке чата с неоновой киберпанк-подсветкой и сохранением в `localStorage`.
-  * `⚡ Быстрый ответ` — стандартный однократный ответ модели (или быстрый поиск/RAG);
-  * `🕵️ Глубокое исследование` — запуск автономного агента, собирающего факты из множества источников с формированием подробного отчета.
-* [x] **Интерактивный лог рассуждений агента**:
-  * Прозрачное пошаговое отображение в чате: гипотезы модели, сформированные поисковые запросы, прочитанные URL-страницы и объем извлеченного текста.
-  * Сохранение цепочки рассуждений в SQLite с возможностью повторного просмотра в истории диалогов.
+### Stage 1: Autonomous AI Agent (Deep Research & ReAct Loop) 🕵️
+* [x] **Multi-Step Agent Loop (ReAct: Reason + Act)**:
+  * Implemented a native agent loop on the backend (`/api/agent/research`): the model formulates a hypothesis (`Thought`), calls web search and page fetch tools (`Action`), evaluates retrieved data (`Observation`), and synthesizes a final analytical report.
+* [x] **Generation Mode Switcher in UI**:
+  * Header toggle `🕵️ Deep Research: ВКЛ/ВЫКЛ` (ON/OFF) with neon cyberpunk highlight and `localStorage` persistence.
+  * `⚡ Quick Answer` — standard single-pass generation (or quick web search/RAG);
+  * `🕵️ Deep Research` — launches the autonomous multi-source agent to compile a detailed report.
+* [x] **Interactive Agent Reasoning Log**:
+  * Step-by-step trace displayed in chat: model hypotheses, generated search queries, fetched URLs, and extracted text size.
+  * Reasoning chain persisted in SQLite for replay when revisiting past conversations.
 
 ---
 
-### Этап 2: Поддержка альтернативных и незацензуренных моделей (Uncensored & Open-Weights) 🔓
-* [ ] **Интеграция линеек моделей без цензуры**:
-  * Поддержка и каталог моделей серии **Dolphin** (`dolphin-llama3:8b`, `dolphin-mistral`, `dolphin-qwen`), обученных без корпоративных морализаторских фильтров;
-  * Поддержка **Abliterated-версий** (моделей с математически вырезанным вектором отказа *Refusal Vector*), сохраняющих полную свободу ответов при 100% интеллекте.
-* [ ] **Расширение библиотеки сторонних семейств**:
-  * **Llama 3.1 / 3.2** (мировой стандарт открытых моделей);
-  * **DeepSeek-R1 (Distill 7B/8B)** (глубокие пошаговые рассуждения открытого уровня);
-  * **Mistral / Mixtral** и **Google Gemma 2**.
-* [ ] **Профили системных инструкций (Persona & System Prompts)**:
-  * Возможность сохранять и переключать системные промпты (например: *«Строгий программист»*, *«Без цензуры и нотаций»*, *«Аналитик данных»*).
+### Stage 2: Support for Alternative & Uncensored Models (Uncensored & Open-Weights) 🔓 ✅ (Completed)
+* [x] **Uncensored Model Lineups**:
+  * Added verified catalog entries and classification for the **Dolphin** series (`dolphin3:8b`, `dolphin-mistral:7b`, `CognitiveComputations/dolphin-2.9.2-qwen2-7b:Q4_K_M`) alongside `dolphin-llama3` support;
+  * Added **`abliterated`** / uncensored classification, filtering, and hardware compatibility checks preserving full capability without refusal guardrails.
+* [x] **Expanded Third-Party Model Families (`🌐 Open-Weights`)**:
+  * **Llama 3.1 / 3.2** (`llama3.2:3b`, `llama3.1:8b`);
+  * **DeepSeek-R1** (`deepseek-r1:7b`, `deepseek-r1:8b`, `deepseek-r1:14b` with RAM Offload detection);
+  * **Mistral / Mixtral** (`mistral:7b`, `mixtral:8x7b` flagged as `oom_risk` on 8 GB VRAM + 16 GB RAM) and **Google Gemma 2** (`gemma2:2b`, `gemma2:9b` with native `8192` context limit);
+  * Unified hardware compatibility evaluation (`computeHardwareCompatibility`) across installed model classification and the download catalog.
+* [x] **System Prompt Profiles (Persona & System Prompts)**:
+  * Added SQLite `personas` table, per-chat `persona_id` persistence, 5 built-in profiles (*Default Assistant*, *Strict Programmer*, *Uncensored / No Lectures*, *Data Analyst*, *Reverse Engineer*), REST CRUD endpoints (`/api/personas*`), and UI selector/management modal wired into standard chat, Web/RAG prompts, and Deep Research synthesis.
 
 ---
 
-### Этап 3: Импортер GGUF и моделей с Hugging Face 📦
-* [ ] **Поддержка папки `models/` для файлов `.gguf`**:
-  * Возможность просто перетащить файл квантованной модели `.gguf` (скачанный с Hugging Face) в локальную папку проекта.
-* [ ] **Автоматический генератор `Modelfile`**:
-  * Сервер самостоятельно определяет базовый шаблон (ChatML, Llama-3, Mistral), формирует `Modelfile` и выполняет команду `ollama create <имя> -f Modelfile` без необходимости лезть в командную строку.
-* [ ] **Быстрая загрузка по прямой ссылке**:
-  * Поле ввода URL для скачивания квантованных весов напрямую с репозиториев Hugging Face.
+### Stage 2.5: Smart Chat & Agent File Tools (Read-Only Sandbox) 📁
+* [x] **Model- and Mode-Aware System Prompt (`buildSystemPrompt`)**:
+  * Normal chat receives a dynamic `system` prompt specifying the active Ollama model name and an honest statement of mode capabilities/limitations (pointing users to `🕵️ Deep Research` or a `C:\...` path for project inspection).
+* [x] **Smart Web Search Gate (`shouldWebSearch`)**:
+  * Greetings, small talk, and meta-questions about the assistant no longer trigger unnecessary DuckDuckGo searches.
+* [x] **Sandboxed ReAct Agent File Tools (`list_dir` and `read_file`)**:
+  * Added read-only `list_dir` and `read_file` tools inside `/api/agent/research` restricted by allowed roots (`AGENT_FS_ROOTS`, defaulting to `Desktop`), validated via `realpathSync`, skipping binary files, heavy directories, and sensitive files.
+  * Fixed `parseReActOutput` parser to capture `Action:` arguments accurately and raised the Ollama timeout to 120s.
+* [x] **Local Path Auto-Routing & File UI (`hasLocalWindowsPath`)**:
+  * Prompts containing a local Windows path automatically route to the autonomous ReAct agent; inspected directories and local files are displayed in the reasoning steps and sources block.
 
 ---
 
-### Этап 4: Локальная песочница исполнения кода (Code Sandbox) 💻
-* [ ] **Безопасный интерпретатор JavaScript / Python**:
-  * Возможность запускать сгенерированные моделью расчетные скрипты в изолированной среде.
-* [ ] **Визуализация результатов прямо в диалоге**:
-  * Построение графиков (SVG / Canvas), расчет математических задач, парсинг табличных данных CSV/JSON и мгновенный вывод готового результата пользователю.
+### Stage 3: GGUF & Hugging Face Model Importer 📦
+* [ ] **`models/` Directory Support for `.gguf` Files**:
+  * Drag-and-drop workflow for quantized `.gguf` files (downloaded from Hugging Face) placed in the local project folder.
+* [ ] **Automatic `Modelfile` Generator**:
+  * Backend detects the prompt template family (ChatML, Llama-3, Mistral), builds a `Modelfile`, and runs `ollama create <name> -f Modelfile` automatically without manual CLI steps.
+* [ ] **Direct URL Downloader**:
+  * Input field to pull quantized weights directly from Hugging Face repositories.
 
 ---
 
-### Этап 5: Продвинутая мультимодальность для Vision-моделей 👁️
-* [ ] **Drag-and-Drop изображений и скриншотов**:
-  * Вставка картинок из буфера обмена (`Ctrl+V`) или перетаскивание файлов прямо в область ввода.
-* [ ] **Парсинг документов и диаграмм через `qwen3-vl:4b`**:
-  * Распознавание графиков, сканов таблиц, блок-схем и архитектурных диаграмм с преобразованием в структурированный текст или код.
+### Stage 4: Local Code Execution Sandbox 💻
+* [ ] **Safe JavaScript / Python Interpreter**:
+  * Isolated execution of model-generated calculation and data-processing scripts.
+* [ ] **Inline Result Visualization**:
+  * Charts (SVG / Canvas), mathematical computations, CSV/JSON table parsing, and instant inline rendering.
 
 ---
 
-## 🛠️ Архитектурные принципы проекта
+### Stage 5: Advanced Multimodal Support for Vision Models 👁️
+* [ ] **Drag-and-Drop Images & Screenshots**:
+  * Clipboard image paste (`Ctrl+V`) or drag-and-drop directly into the chat input box.
+* [ ] **Document & Diagram Parsing via `qwen3-vl:4b`**:
+  * Recognition of charts, scanned tables, flowcharts, and architecture diagrams into structured text or code.
 
-1. **Zero-Dependencies**: Никаких раздутых внешних npm-пакетов, Python-прослоек или тяжелых фреймворков. Только чистый нативный Node.js и Vanilla JS.
-2. **100% Локальность и приватность**: Никаких данных не отправляется в сторонние облачные сервисы. Все вычисления, эмбеддинги и базы данных работают на локальной машине.
-3. **Эффективность железа**: Оптимизация под потребительские видеокарты с 8 GB VRAM (AMD Radeon RX 6600) за счет умного управления контекстом (32K), легких вспомогательных моделей (0.6B) и экономии памяти.
-4. **Текстовый фокус**: Чистый, быстрый и отзывчивый интерфейс исключительно для работы с текстом, знаниями, поиском и кодом.
+---
+
+## 🛠️ Project Architectural Principles
+
+1. **Zero-Dependencies**: No bloated external npm packages, Python wrappers, or heavy frameworks — only pure native Node.js and Vanilla JS.
+2. **100% Local & Private**: No user data leaves the local machine for third-party cloud APIs. All inference, embeddings, and databases run locally.
+3. **Hardware Efficiency**: Optimized for consumer 8 GB VRAM GPUs (AMD Radeon RX 6600) through smart context management (32K), lightweight helper models (0.6B), and memory discipline.
+4. **Text-First Focus**: Clean, fast, responsive interface dedicated strictly to text, knowledge, search, and code.

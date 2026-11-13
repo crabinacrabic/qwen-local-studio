@@ -1,192 +1,192 @@
-# Руководство по архитектуре и стеку проекта (для будущих агентов) 🤖📚
+# Project Architecture & Tech Stack Guide (for Future Agents) 🤖📚
 
-Документ создан для будущих AI-агентов и разработчиков, работающих с проектом **Qwen AI Studio (Local)**.
+This document is created for future AI agents and developers working on **Qwen AI Studio (Local)**.
 
 ---
 
-## 1. Аппаратный стек (Hardware)
+## 1. Hardware Stack
 
-- **CPU**: AMD Ryzen 7 5700X (8 ядер, 16 потоков).
-- **GPU**: AMD Radeon RX 6600 (8 ГБ VRAM GDDR6). Вычисления выполняются на GPU Compute-движке (поддержка ROCm/DirectML/Vulkan через Ollama).
-- **RAM**: 16 ГБ DDR4 (в пиках нагрузки модели 8B и кэш занимают до 14–15 ГБ).
+- **CPU**: AMD Ryzen 7 5700X (8 cores, 16 threads).
+- **GPU**: AMD Radeon RX 6600 (8 GB VRAM GDDR6). Compute runs on the GPU compute engine (ROCm / DirectML / Vulkan support via Ollama).
+- **RAM**: 16 GB DDR4 (under peak load, 8B models and cache occupy up to 14–15 GB).
 - **OS**: Windows (Shell: PowerShell / CMD).
 
 ---
 
-## 2. Программный стек (Software Stack)
+## 2. Software Stack
 
-- **Служба инференса**: [Ollama](https://ollama.com/)
-  - Путь к исполняемому файлу: `%LOCALAPPDATA%\Programs\Ollama\ollama.exe`
-  - Порт: `127.0.0.1:11434`
-  - Добавлена в автозапуск реестра: `HKCU:\Software\Microsoft\Windows\CurrentVersion\Run`
-  - Служебный вызов для проверки: `GET http://127.0.0.1:11434/api/tags`
-- **Серверная часть**: Node.js (v24.x)
-  - Файл: `server.js`
-  - Порт: `http://localhost:3000`
-  - Zero-dependency архитектура: только стандартные модули Node.js (`http`, `fs`, `path`, `child_process`).
-  - Логирование: ведется с локальным временем (не UTC!) в файл `app.log` и в `stdout`.
-- **Фронтенд**:
-  - Файл: `chat.html` (отдается сервером по адресу `http://localhost:3000`).
-  - Чистый HTML5, CSS3 (адаптивная темная тема в стиле GitHub Dark), нативный Vanilla JavaScript без тяжелых фреймворков.
-  - Потоковый прием ответов (`fetch` + `ReadableStreamDefaultReader` + `TextDecoder`).
-  - Отображение блока рассуждений (`Thinking...`) в реальном времени.
-- **Система контроля версий**:
-  - Git, репозиторий: `https://github.com/crabinacrabic/qwen-local-studio`
-  - Ветка: `main`
-
----
-
-## 3. Модели нейросетей в системе
-
-### А. Текстовые генеративные модели (для чата)
-1. **`qwen3:8b` (Флагман)**: 8 млрд параметров, Q4_K_M (~5.2 ГБ). Основная думающая модель (`<thought>`), великолепно отвечает на русском языке, анализирует сложные документы.
-2. **`qwen3:4b`**: 4 млрд параметров (~2.5 ГБ). Отличный баланс скорости и качества для быстрых ответов.
-3. **`qwen3:1.7b`**: 1.7 млрд параметров (~1.4 ГБ). Быстрая компактная модель.
-4. **`qwen3:0.6b`**: 0.6 млрд параметров (~522 МБ). Ультра-легкая модель для тестов и простых реплик.
-
-### Б. Модели эмбеддингов (служебные, ТОЛЬКО для RAG)
-- **`nomic-embed-text`**: 137M параметров (~274 МБ).
-  - Генерирует 768-мерные векторные представления смыслов (`POST /api/embeddings`).
-  - **ВАЖНО**: Эта модель отфильтрована в `chat.html` из выпадающего списка чата и карточек моделей, чтобы пользователь не пытался с ней переписываться (она не умеет генерировать диалоги).
+- **Inference Service**: [Ollama](https://ollama.com/)
+  - Executable path: `%LOCALAPPDATA%\Programs\Ollama\ollama.exe`
+  - Port: `127.0.0.1:11434`
+  - Added to Windows registry startup: `HKCU:\Software\Microsoft\Windows\CurrentVersion\Run`
+  - Health-check endpoint: `GET http://127.0.0.1:11434/api/tags`
+- **Backend**: Node.js (v24.x)
+  - Entry point: `server.js`
+  - URL: `http://localhost:3000`
+  - Zero-dependency architecture: built-in Node.js modules only (`http`, `fs`, `path`, `child_process`, etc.).
+  - Logging: written with local timestamps (not UTC!) to `app.log` and `stdout`.
+- **Frontend**:
+  - File: `chat.html` (served by the backend at `http://localhost:3000`).
+  - Pure HTML5, CSS3 (adaptive dark theme in GitHub Dark style), native Vanilla JavaScript without heavy frameworks.
+  - Streaming response handling (`fetch` + `ReadableStreamDefaultReader` + `TextDecoder`).
+  - Real-time reasoning display (`Thinking...` block).
+- **Version Control**:
+  - Git repository: `https://github.com/crabinacrabic/qwen-local-studio`
+  - Branch: `main`
 
 ---
 
-## 4. Архитектура локального RAG (Базы Знаний)
+## 3. Neural Network Models in the System
 
-Вся обработка происходит **100% локально и оффлайн**:
+### A. Generative Text Models (for Chat)
+1. **`qwen3:8b` (Flagship)**: 8B parameters, Q4_K_M (~5.2 GB). Primary thinking model (`<thought>`), strong Russian responses, analyzes complex documents.
+2. **`qwen3:4b`**: 4B parameters (~2.5 GB). Great speed/quality balance for fast responses.
+3. **`qwen3:1.7b`**: 1.7B parameters (~1.4 GB). Fast compact model.
+4. **`qwen3:0.6b`**: 0.6B parameters (~522 MB). Ultra-lightweight model for quick tests and simple replies.
 
-```
-[Пользовательский документ: .txt, .md, .docx, код]
-                       │
-                       ▼
-  [Распаковка и парсинг текста]
-    - Для .docx: системный tar.exe распаковывает word/document.xml,
-      скрипт вычищает XML-теги и извлекает чистый русский текст.
-    - Для текста: прямое чтение UTF-8.
-                       │
-                       ▼
-    [Интеллектуальный чанкинг (chunkText)]
-    - Фрагменты по ~500 символов с перекрытием 70 символов
-    - Жесткое ограничение длины, чтобы не превысить контекст эмбеддингов
-                       │
-                       ▼
-    [Векторизация через nomic-embed-text]
-    - Запрос к Ollama POST /api/embeddings
-    - Вычисление евклидовой нормы вектора (norm)
-                       │
-                       ▼
-   [Хранилище: knowledge_index.json & knowledge/]
-    - Чанки: { id, filename, chunkIndex, text, embedding, norm, createdAt }
-    - Исходные файлы: папка knowledge/ (в .gitignore)
-                       │
-                       ▼
-    [Семантический поиск (POST /api/rag/search)]
-    - Вопрос пользователя векторизуется через nomic-embed-text
-    - Косинусное сходство (cosine similarity) со всеми чанками в памяти
-    - Сортировка по убыванию score, фильтр (score >= 0.35), Top-3 результата
-                       │
-                       ▼
-     [Аугментация промпта и отправка в Qwen]
-    - В чате отображается виджет: «📚 Использовано источников: N (совпадение XX%)»
-    - В модель передается системный промпт с контекстом из найденных фрагментов
-    - Qwen отвечает точно по фактам из документов с блоком рассуждений.
-```
+### B. Embedding Models (Internal Utility, RAG ONLY)
+- **`nomic-embed-text`**: 137M parameters (~274 MB).
+  - Generates 768-dimensional semantic embedding vectors (`POST /api/embeddings`).
+  - **IMPORTANT**: Filtered out of the chat model selector and model cards in `chat.html` so users do not try to chat with it directly (it cannot generate chat dialogue).
 
 ---
 
-## 5. Архитектура живого выхода в интернет (Web Search & Browsing) 🌐
+## 4. Local RAG Architecture (Knowledge Base)
 
-Выход в интернет работает **без платных API, без регистрации и без внешних npm-библиотек**:
+All processing runs **100% locally and offline**:
 
 ```
-[Вопрос пользователя / прямая ссылка]
-                 │
-                 ▼
-     [Анализ и маршрутизация]
-    ├── Есть прямая ссылка URL ──► POST /api/web/fetch (глубокое чтение страницы)
-    └── Включен «🌐 Интернет: ВКЛ» ──► POST /api/web/search (DuckDuckGo Search)
-                 │
-                 ▼
-      [Сетевой модуль server.js]
-    - Первичный движок: DuckDuckGo HTML (POST https://html.duckduckgo.com/html/)
-    - Резервный движок: DuckDuckGo Lite (POST https://lite.duckduckgo.com/lite/)
-    - Декодирование целевых ссылок (uddg redirect unwrap)
-    - Очистка сниппетов и заголовков от HTML-тегов и сущностей
-                 │
-                 ▼
-      [Глубокое чтение (Deep Fetch)]
-    - Для Top-2 наиболее релевантных сайтов загружается основной текст (до 1600 симв.)
-    - Вырезаются скрипты, стили, шапки, футеры и навигация
-                 │
-                 ▼
-      [Аугментация контекста для Qwen]
-    - Внедрение текущей даты (сегодня: YYYY-MM-DD)
-    - Блок === АКТУАЛЬНЫЕ РЕЗУЛЬТАТЫ ПОИСКА В ИНТЕРНЕТЕ ===
-    - Ссылочная нумерация [1], [2], [3]
-                 │
-                 ▼
-         [Генерация и UI]
-    - Модель Qwen ссылается на источники [1], [2] в ходе рассуждений и ответа
-    - В интерфейсе выводится интерактивный раскрывающийся блок карточек сайтов с кликабельными ссылками.
+[User Document: .txt, .md, .docx, source code]
+                       │
+                       ▼
+  [Unpacking & Text Parsing]
+    - For .docx: system tar.exe extracts word/document.xml,
+      the script strips XML tags and extracts clean UTF-8 text.
+    - For plain text/code: direct UTF-8 read.
+                       │
+                       ▼
+    [Smart Chunking (chunkText)]
+    - ~500-character chunks with 70-character overlap
+    - Hard length limit to stay within embedding context bounds
+                       │
+                       ▼
+    [Vectorization via nomic-embed-text]
+    - Request to Ollama POST /api/embeddings
+    - Euclidean vector norm computation (norm)
+                       │
+                       ▼
+   [Storage: knowledge_index.json & knowledge/]
+    - Chunks: { id, filename, chunkIndex, text, embedding, norm, createdAt }
+    - Source files: knowledge/ directory (listed in .gitignore)
+                       │
+                       ▼
+    [Semantic Search (POST /api/rag/search)]
+    - User query is vectorized via nomic-embed-text
+    - Cosine similarity computed against all in-memory chunks
+    - Descending sort by score, filter (score >= 0.35), Top-3 results
+                       │
+                       ▼
+     [Prompt Augmentation & Dispatch to Qwen]
+    - Chat UI shows widget: "📚 Использовано источников: N (совпадение XX%)"
+    - System prompt injects context from matched chunks
+    - Qwen responds strictly from document facts with reasoning block
 ```
 
 ---
 
-## 6. Архитектура автопроверки и безопасного обновления моделей 🔄
+## 5. Live Web Search & Browsing Architecture 🌐
+
+Live internet access works **without paid APIs, without registration, and without external npm packages**:
 
 ```
-[Запуск chat.html / Клик «Проверить новые модели»]
+[User Query / Direct URL]
+                 │
+                 ▼
+     [Analysis & Routing]
+    ├── Contains direct URL ──► POST /api/web/fetch (deep page reading)
+    └── "🌐 Интернет: ВКЛ" enabled ──► POST /api/web/search (DuckDuckGo Search)
+                 │
+                 ▼
+      [server.js Networking Module]
+    - Primary engine: DuckDuckGo HTML (POST https://html.duckduckgo.com/html/)
+    - Fallback engine: DuckDuckGo Lite (POST https://lite.duckduckgo.com/lite/)
+    - Target link decoding (uddg redirect unwrap)
+    - HTML tag and entity cleanup for titles and snippets
+                 │
+                 ▼
+      [Deep Fetch]
+    - Loads main text (up to 1600 chars) for Top-2 most relevant sites
+    - Strips scripts, styles, headers, footers, and navigation
+                 │
+                 ▼
+      [Context Augmentation for Qwen]
+    - Injects current date (сегодня / today: YYYY-MM-DD)
+    - Block: === АКТУАЛЬНЫЕ РЕЗУЛЬТАТЫ ПОИСКА В ИНТЕРНЕТЕ ===
+    - Citation numbering [1], [2], [3]
+                 │
+                 ▼
+         [Generation & UI]
+    - Model cites sources [1], [2] during reasoning and final answer
+    - UI renders an interactive collapsible source-cards block with clickable links
+```
+
+---
+
+## 6. Auto-Check & Safe Model Update Architecture 🔄
+
+```
+[chat.html Startup / Click "Проверить новые модели"]
                          │
                          ▼
         [GET /api/models/check-updates]
-        ├── Локальные модели: GET /api/tags
-        └── Библиотека: GET https://ollama.com/search?q=qwen
+        ├── Local models: GET /api/tags
+        └── Remote library: GET https://ollama.com/search?q=qwen
                          │
                          ▼
-          [Сопоставление поколений и VRAM]
-        - qwen3:8b ➔ qwen3.5:9b (флагман, 256K context, ~6.6 GB)
-        - qwen3:4b ➔ qwen3.5:4b (быстрая, ~3.4 GB)
+          [Generation & VRAM Matching]
+        - qwen3:8b ➔ qwen3.5:9b (flagship, 256K context, ~6.6 GB)
+        - qwen3:4b ➔ qwen3.5:4b (fast, ~3.4 GB)
         - nomic-embed-text ➔ qwen3-embedding:0.6b (RAG, 32K context)
-        - qwen3-vl:4b (рекомендация Vision)
+        - qwen3-vl:4b (Vision recommendation)
                          │
                          ▼
-             [Интерактивный UI диалог]
-    Пользователь выбирает стратегию для каждой модели:
-    🔘 Заменить (скачать новую + удалить старую для экономии места)
-    🔘 Сохранить обе модели
-    🔘 Пропустить
+             [Interactive UI Dialog]
+    User chooses a strategy per model:
+    🔘 Replace (download new + delete old to save disk space)
+    🔘 Keep both models
+    🔘 Skip
                          │
                          ▼
-          [Пайплайн безопасного обновления]
-    1. POST /api/pull (потоковое скачивание со шкалой 0-100%)
-    2. Верификация завершения
-    3. При выборе «Заменить»: DELETE /api/delete для старой модели
-       (только после 100% успеха новой!)
-    4. Автоматическое переключение селектора чата на новую модель
+          [Safe Update Pipeline]
+    1. POST /api/pull (streaming download with 0–100% progress bar)
+    2. Completion verification
+    3. If "Replace" chosen: DELETE /api/delete for the old model
+       (ONLY after 100% success of the new download!)
+    4. Automatic switch of chat selector to the new model
 ```
 
 ---
 
-## 7. Важные файлы и скрипты
+## 7. Key Files & Scripts
 
-| Файл | Назначение |
+| File | Purpose |
 | :--- | :--- |
-| **`server.js`** | Локальный сервер на Node.js: прокси к Ollama, RAG (`/api/rag/*`), веб-поиск (`/api/web/*`), автопроверка моделей (`/api/models/check-updates`), логирование в `app.log`. |
-| **`chat.html`** | Веб-интерфейс чата: переключатели Интернета и RAG, модальное окно автообновления моделей, загрузчик, панель базы знаний. |
-| **`start_web_chat.bat`** | Стартер: проверяет службу Ollama (запускает при необходимости), стартует `node server.js` и открывает браузер. |
-| **`git_push.bat`** | Удобный скрипт для пользователя в 1 клик закоммитить и запушить изменения на GitHub. |
-| **`knowledge_index.json`** | База векторов и чанков документов (хранится локально, в `.gitignore`). |
-| **`knowledge/`** | Папка с копиями загруженных пользователем файлов (в `.gitignore`). |
-| **`app.log`** | Лог-файл событий сервера и UI с локальным временем (в `.gitignore`). |
-| **`.gitignore`** | Исключает логи, веса моделей, личные документы и базу векторов из публичного репозитория. |
+| **`server.js`** | Local Node.js server: Ollama proxy, RAG (`/api/rag/*`), web search (`/api/web/*`), model update checks (`/api/models/check-updates`), autonomous ReAct agent (`/api/agent/research`), logging to `app.log`. |
+| **`chat.html`** | Web chat UI: Web Search / RAG / Deep Research toggles, model update modal, downloader, knowledge base panel, session sidebar. |
+| **`start_web_chat.bat`** | Launcher: checks/starts Ollama if needed, starts `node server.js`, and opens the browser. |
+| **`git_push.bat`** | Convenience 1-click script to commit and push changes to GitHub. |
+| **`knowledge_index.json`** | Vector index and document chunks (stored locally, `.gitignore`). |
+| **`knowledge/`** | Directory storing copies of user-uploaded files (`.gitignore`). |
+| **`app.log`** | Server and UI event log with local timestamps (`.gitignore`). |
+| **`.gitignore`** | Excludes logs, model weights, personal documents, and vector database from the public repository. |
 
 ---
 
-## 8. Правила для будущих агентов
+## 8. Rules for Future Agents
 
-1. **Язык общения и отчетов**: Всегда отвечать на русском языке и оформлять артефакты на русском.
-2. **Безопасность данных**: Ни в коем случае не коммитить в git содержимое `knowledge/`, `knowledge_index.json`, `app.log` и бинарные веса моделей.
-3. **Совместимость с GPU RX 6600**: Не запускать одновременно две тяжелые модели по 14B+, так как VRAM ограничена 8 ГБ. Для чата идеален `qwen3.5:9b`, для легких задач — `qwen3.5:4b`.
-4. **Фильтрация моделей**: Любые новые модели эмбеддингов (содержащие `embed`, `bge`, `minilm`) должны оставаться скрытыми от выбора в основном чате.
-5. **Zero-Dependency стек**: Не добавлять тяжелые npm-зависимости, если задачу можно решить нативными модулями Node.js (`http`, `https`, `url`, `fs`, `child_process`).
-6. **Безопасность удаления**: Никогда не удалять старую рабочую модель до тех пор, пока новая не скачана на 100% и не верифицирована.
+1. **Language of Reasoning, Docs & Reports**: Always think/reason in English and write internal technical documentation (e.g., `ARCHITECTURE.md`, `ROADMAP.md`) in English. Always write user-facing responses and report artifacts (e.g., `implementation_plan.md`, `walkthrough.md`) in Russian.
+2. **Data Safety**: Never commit contents of `knowledge/`, `knowledge_index.json`, `app.log`, SQLite DB files, or binary model weights to git.
+3. **RX 6600 GPU Compatibility**: Do not run two heavy 14B+ models simultaneously, as VRAM is limited to 8 GB. For general chat `qwen3.5:9b` (or 7B–8B quantized models) fits best; for lightweight tasks use `qwen3.5:4b`.
+4. **Model Filtering**: Any new embedding models (containing `embed`, `bge`, `minilm`) must remain hidden from the main chat model selector.
+5. **Zero-Dependency Stack**: Do not add heavy npm dependencies if a task can be solved using native Node.js built-ins (`http`, `https`, `url`, `fs`, `child_process`, `node:sqlite`).
+6. **Safe Model Deletion**: Never delete a working older model until the replacement model has downloaded 100% and passed verification.

@@ -63,7 +63,24 @@ db.exec(`
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS personas (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        icon TEXT DEFAULT '🤖',
+        description TEXT DEFAULT '',
+        system_prompt TEXT NOT NULL,
+        is_builtin INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
 `);
+
+// Миграция таблицы chats: добавляем persona_id при необходимости
+const chatColumns = db.prepare(`PRAGMA table_info(chats)`).all().map(c => c.name);
+if (!chatColumns.includes('persona_id')) {
+    db.exec(`ALTER TABLE chats ADD COLUMN persona_id TEXT DEFAULT 'default';`);
+}
 
 // Вспомогательная функция локального времени
 function getLocalTimestamp() {
@@ -76,14 +93,15 @@ function getLocalTimestamp() {
 // МЕТОДЫ УПРАВЛЕНИЯ ЧАТАМИ (CHATS)
 // ==========================================
 
-function createChat(title = 'Новый диалог', model = 'qwen3.5:9b') {
+function createChat(title = 'Новый диалог', model = 'qwen3.5:9b', personaId = null) {
     const id = 'chat_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
     const now = getLocalTimestamp();
+    const resolvedPersonaId = personaId || getSetting('active_persona_id', 'default') || 'default';
     const stmt = db.prepare(`
-        INSERT INTO chats (id, title, model, pinned, created_at, updated_at)
-        VALUES (?, ?, ?, 0, ?, ?)
+        INSERT INTO chats (id, title, model, pinned, persona_id, created_at, updated_at)
+        VALUES (?, ?, ?, 0, ?, ?, ?)
     `);
-    stmt.run(id, title, model, now, now);
+    stmt.run(id, title, model, resolvedPersonaId, now, now);
     return getChatById(id);
 }
 
@@ -112,14 +130,15 @@ function updateChat(id, updates = {}) {
     const title = updates.title !== undefined ? updates.title : chat.title;
     const model = updates.model !== undefined ? updates.model : chat.model;
     const pinned = updates.pinned !== undefined ? (updates.pinned ? 1 : 0) : chat.pinned;
+    const personaId = updates.persona_id !== undefined ? updates.persona_id : (chat.persona_id || 'default');
     const now = getLocalTimestamp();
 
     const stmt = db.prepare(`
         UPDATE chats 
-        SET title = ?, model = ?, pinned = ?, updated_at = ?
+        SET title = ?, model = ?, pinned = ?, persona_id = ?, updated_at = ?
         WHERE id = ?
     `);
-    stmt.run(title, model, pinned, now, id);
+    stmt.run(title, model, pinned, personaId, now, id);
     return getChatById(id);
 }
 
@@ -294,6 +313,124 @@ function setSetting(key, value) {
     stmt.run(key, String(value));
 }
 
+// ==========================================
+// ПРОФИЛИ СИСТЕМНЫХ ИНСТРУКЦИЙ (PERSONAS)
+// ==========================================
+
+const BUILTIN_PERSONAS = [
+    {
+        id: 'default',
+        name: 'Стандартный ассистент',
+        icon: '🤖',
+        description: 'Универсальный точный помощник с хорошим балансом объяснений и кода.',
+        system_prompt: 'Всегда отвечай на русском языке. Будь точен, вежлив, структурно излагай мысли и давай качественные примеры кода.'
+    },
+    {
+        id: 'strict_coder',
+        name: 'Строгий программист',
+        icon: '💻',
+        description: 'Senior-инженер: чистый код, краевые случаи, баги, безопасность, без воды.',
+        system_prompt: 'Ты — ведущий senior-разработчик и строгий код-ревьюер. Отвечай на русском языке кратко и строго по делу без воды и пустых комплиментов. Проверяй граничные условия, безопасность, утечки памяти и асинхронность. Давай чистый воспроизводимый код; если подход пользователя неоптимален или ошибочен — прямо укажи причину и предложи лучшее решение.'
+    },
+    {
+        id: 'uncensored',
+        name: 'Без цензуры и нотаций',
+        icon: '🔓',
+        description: 'Прямые объективные ответы без морализаторства и лишних отказов.',
+        system_prompt: 'Ты — прямой, объективный и нейтральный технический ассистент. Отвечай на русском языке максимально прямо, подробно и по существу. Не читай морализаторских лекций, не добавляй непрошенных предупреждений и не уклоняйся от технических, академических или исследовательских деталей.'
+    },
+    {
+        id: 'data_analyst',
+        name: 'Аналитик данных',
+        icon: '📊',
+        description: 'Факты, таблицы, сравнение метрик, проверка допущений и выводы.',
+        system_prompt: 'Ты — старший аналитик данных и технический исследователь. Структурируй ответы на русском языке: 1) краткое резюме, 2) сравнение фактов, чисел и метрик (по возможности таблицей), 3) допущения и ограничения, 4) практические выводы. Строго отделяй подтверждённые факты от предположений.'
+    },
+    {
+        id: 'reverse_engineer',
+        name: 'Реверс-инженер',
+        icon: '🛠️',
+        description: 'Бинарный анализ, x86/x64, WinAPI, Ghidra, структуры памяти и C/Python.',
+        system_prompt: 'Ты — специалист по реверс-инжинирингу и низкоуровневому анализу (x86/x64, PE/ELF, WinAPI, Ghidra, x64dbg, C/C++, Python). Разбирай логику на русском языке точно по адресам, смещениям, структурам и вызовам API, не додумывая отсутствующие фрагменты кода.'
+    }
+];
+
+function seedBuiltinPersonas() {
+    const now = getLocalTimestamp();
+    const stmt = db.prepare(`
+        INSERT OR IGNORE INTO personas (id, name, icon, description, system_prompt, is_builtin, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+    `);
+    for (const p of BUILTIN_PERSONAS) {
+        stmt.run(p.id, p.name, p.icon, p.description, p.system_prompt, now, now);
+    }
+    if (!getSetting('active_persona_id', null)) {
+        setSetting('active_persona_id', 'default');
+    }
+}
+
+seedBuiltinPersonas();
+
+function getPersonas() {
+    return db.prepare(`
+        SELECT * FROM personas
+        ORDER BY CASE WHEN id = 'default' THEN 0 ELSE 1 END, is_builtin DESC, created_at ASC, name ASC
+    `).all();
+}
+
+function getPersonaById(id) {
+    if (!id) return null;
+    return db.prepare(`SELECT * FROM personas WHERE id = ?`).get(id) || null;
+}
+
+function createPersona({ name, icon = '🎭', description = '', system_prompt }) {
+    const cleanName = String(name || '').trim();
+    const cleanPrompt = String(system_prompt || '').trim();
+    if (!cleanName || !cleanPrompt) {
+        throw new Error('Требуются название профиля и текст системной инструкции');
+    }
+    const id = 'persona_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
+    const now = getLocalTimestamp();
+    db.prepare(`
+        INSERT INTO personas (id, name, icon, description, system_prompt, is_builtin, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 0, ?, ?)
+    `).run(id, cleanName, String(icon || '🎭').trim() || '🎭', String(description || '').trim(), cleanPrompt, now, now);
+    return getPersonaById(id);
+}
+
+function updatePersona(id, updates = {}) {
+    const existing = getPersonaById(id);
+    if (!existing) return null;
+    const name = updates.name !== undefined ? String(updates.name).trim() : existing.name;
+    const icon = updates.icon !== undefined ? (String(updates.icon).trim() || '🎭') : existing.icon;
+    const description = updates.description !== undefined ? String(updates.description).trim() : existing.description;
+    const systemPrompt = updates.system_prompt !== undefined ? String(updates.system_prompt).trim() : existing.system_prompt;
+    if (!name || !systemPrompt) {
+        throw new Error('Название и системная инструкция не могут быть пустыми');
+    }
+    const now = getLocalTimestamp();
+    db.prepare(`
+        UPDATE personas
+        SET name = ?, icon = ?, description = ?, system_prompt = ?, updated_at = ?
+        WHERE id = ?
+    `).run(name, icon, description, systemPrompt, now, id);
+    return getPersonaById(id);
+}
+
+function deletePersona(id) {
+    const existing = getPersonaById(id);
+    if (!existing) return { deleted: false, reason: 'not_found' };
+    if (existing.is_builtin) {
+        return { deleted: false, reason: 'builtin' };
+    }
+    db.prepare(`UPDATE chats SET persona_id = 'default' WHERE persona_id = ?`).run(id);
+    if (getSetting('active_persona_id', 'default') === id) {
+        setSetting('active_persona_id', 'default');
+    }
+    const res = db.prepare(`DELETE FROM personas WHERE id = ?`).run(id);
+    return { deleted: res.changes > 0 };
+}
+
 module.exports = {
     db,
     createChat,
@@ -311,5 +448,10 @@ module.exports = {
     addMemory,
     deleteMemory,
     getSetting,
-    setSetting
+    setSetting,
+    getPersonas,
+    getPersonaById,
+    createPersona,
+    updatePersona,
+    deletePersona
 };
